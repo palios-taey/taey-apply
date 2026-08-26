@@ -14,6 +14,7 @@
 - their runtime receipts;
 - transaction drafts;
 - transaction manifests and claims;
+- classification preparation manifests, policy/classifier artifacts, refusal markers, and claims;
 - classification attempt reservations and receipts;
 - the jobs database and state root;
 - raw job titles, companies, locations, descriptions, URLs, and account state;
@@ -25,8 +26,10 @@ The preparer receives the private draft by path; draft field values never appear
 
 The database must already exist, be an owner-controlled regular file with mode `0600`, and contain the required tables and columns. The connector never initializes or migrates it.
 
-The classification claim contains only private relative references, SHA-256 bindings, and one parent-authorized terminal enum. It contains no raw job field or policy rule. The claim path, database path, and expected claim digest are parent-bound runtime arguments; the verdict and all policy values remain absent from the command line and model request. The compact result omits the job identity, verdict, and policy/classifier digests. The immutable receipt exposes only public-safe digests, counts, and fixed postcondition labels.
+The classification preparation manifest contains only private relative references and SHA-256 bindings. The parent-only preparer reads those artifacts beneath the private root, passes the complete private row only to the exact pinned classifier bytes, and emits fixed state plus digests. The command line and stdout contain no raw job field, policy rule, classifier source, or verdict. On success it writes the existing classification claim schema; on a post-identity refusal it writes the separate immutable refusal marker. It never writes a classification-attempt marker or database value.
+
+The classification claim contains only private relative references, SHA-256 bindings, and one parent-authorized terminal enum. It contains no raw job field or policy rule. The claim path, database path, and expected claim digest are parent-bound runtime arguments; the verdict and all policy values remain absent from the command line and model request. The compact commit result omits the job identity, verdict, and policy/classifier digests. The immutable receipt exposes only public-safe digests, counts, and fixed postcondition labels.
 
 ## Taey-facing contract
 
-The model-facing intake and classification tools accept `{}`. A parent runtime binds the active seat and correlation identity to one immutable private transaction and invokes the selected CLI once. An accepted classification claim reserves a digest-derived immutable attempt marker before the database transition; the same claim is never replayed. Any later recovery requires a separately governed new claim after root-cause reconciliation, never an automatic retry.
+The model-facing intake and classification tools accept `{}`. Classification preparation is not a Taey tool; a trusted parent invokes it from the pinned manifest and reviewed checkout. A parent runtime binds the active seat and correlation identity to one immutable private transaction and invokes the selected commit CLI once. An accepted classification claim reserves a digest-derived immutable attempt marker before the database transition; the same claim is never replayed. Any later recovery requires a separately governed new claim after root-cause reconciliation, never an automatic retry.
