@@ -4,7 +4,8 @@ This is the only production sequence for turning one exact LinkedIn capture pair
 
 ## Required state
 
-- Run an exact reviewed and deployed `taey-apply` commit.
+- Set `TAEY_APPLY_PUBLIC_ROOT` to the canonical absolute path of the exact reviewed and deployed public `taey-apply` checkout. Its checked-out commit must equal the approved commit, and `$TAEY_APPLY_PUBLIC_ROOT/src/taey_apply/prepare_cli.py` must be a regular file from that commit.
+- Set `TAEY_APPLY_PYTHON` to the canonical absolute path of the exact executable Python interpreter configured for Presence.
 - Configure `TAEY_APPLY_PRIVATE_ROOT` as an owner-controlled, nonsymlink `0700` directory.
 - Place the four immutable source artifact/receipt files beneath that root at mode `0400`.
 - Place one owner-controlled `0400` draft beneath that root. The draft contains exactly the seven fields in `schemas/linkedin-intake-private-input-v1.json`. It may contain formatting whitespace; private field values never appear on the command line.
@@ -13,11 +14,14 @@ This is the only production sequence for turning one exact LinkedIn capture pair
 
 Do not manually create the final transaction, claim, or receipt. Do not reuse an identity whose transaction, seat parent, claim, or receipt exists.
 
+The preparation command does not use an installed console script, an activated environment, ambient `PYTHONPATH`, `PATH`, or the current directory. Its exact `PYTHONPATH` assignment selects only the deployed public `src` tree, and Python `-P` prevents a working-directory package from shadowing it.
+
 ## 1. Prepare once
 
 ```bash
 TAEY_APPLY_PREPARATION_RESULT="$(
-  taey-prepare-linkedin-intake \
+  PYTHONPATH="$TAEY_APPLY_PUBLIC_ROOT/src" \
+    "$TAEY_APPLY_PYTHON" -P -m taey_apply.prepare_cli \
     --private-root "$TAEY_APPLY_PRIVATE_ROOT" \
     --draft-file "$TAEY_APPLY_DRAFT_FILE" \
     --seat-id "$TAEY_APPLY_SEAT_ID" \
