@@ -50,10 +50,11 @@ def lock(lineage: str, correlation: str) -> dict[str, object]:
     }
 
 
-def create_database(path: Path) -> None:
+def create_database(path: Path, *, unique_url: bool = True) -> None:
     connection = sqlite3.connect(path)
+    url_definition = "url TEXT PRIMARY KEY" if unique_url else "url TEXT"
     connection.execute(
-        "CREATE TABLE jobs(url TEXT PRIMARY KEY,source TEXT,company TEXT,title TEXT,location TEXT,"
+        f"CREATE TABLE jobs({url_definition},source TEXT,company TEXT,title TEXT,location TEXT,"
         "workplace TEXT,description TEXT,posted TEXT,posted_raw TEXT,posted_source TEXT,first_seen TEXT,"
         "verdict TEXT,kill_reason TEXT,detail TEXT,applied_at TEXT,score INTEGER)"
     )
@@ -66,7 +67,9 @@ def create_database(path: Path) -> None:
     path.chmod(0o600)
 
 
-def build_private_inputs(private_root: Path) -> tuple[str, str]:
+def build_private_inputs(
+    private_root: Path, *, mutation: str | None = None
+) -> tuple[str, str]:
     source_dir = private_root / "sources"
     transaction_dir = private_root / "transactions" / "seat"
     receipt_dir = private_root / "receipts" / "seat"
@@ -80,7 +83,15 @@ def build_private_inputs(private_root: Path) -> tuple[str, str]:
         directory.mkdir(mode=0o700, exist_ok=True)
         directory.chmod(0o700)
     search_ref = "opaque-search-reference"
-    source_url = "https://www.linkedin.com/jobs/search-results/?currentJobId=1234567890&keywords=example"
+    job_id = {
+        "leading_zero_job_id": "01234567890",
+        "non_ascii_job_id": "１２３４５６７８９０",
+        "encoded_job_id_alias": "%311234567890",
+    }.get(mutation, "1234567890")
+    source_url = (
+        "https://www.linkedin.com/jobs/search-results/"
+        f"?currentJobId={job_id}&keywords=example"
+    )
     card_body = {
         "ordinal": 0,
         "target_card_name": "Example mounted card",
@@ -90,6 +101,8 @@ def build_private_inputs(private_root: Path) -> tuple[str, str]:
         "showing": True,
     }
     card = {**card_body, "card_digest": digest(canonical(card_body))}
+    if mutation == "card_digest_mismatch":
+        card["card_digest"] = "0" * 64
     search_artifact = {
         "schema": "linkedin_mounted_job_search_v1",
         "search_ref": search_ref,
@@ -145,10 +158,21 @@ def build_private_inputs(private_root: Path) -> tuple[str, str]:
             },
         },
     }
+    if mutation == "search_stable_cycle_one":
+        search_receipt["stable_cycles_observed"] = 1
+    elif mutation == "receipt_lineage_mismatch":
+        search_receipt["lock"]["turn_lineage_sha256"] = "9" * 64
+    elif mutation == "receipt_digest_mismatch":
+        search_receipt["pre_observation_sha256"] = "8" * 64
     private_json(source_dir / "search-receipt.json", search_receipt)
+    selected_search_ref = (
+        "different-search-reference"
+        if mutation == "search_ref_mismatch"
+        else search_ref
+    )
     selected_artifact = {
         "schema": "linkedin_selected_job_v1",
-        "search_ref": search_ref,
+        "search_ref": selected_search_ref,
         "source_url": source_url,
         "detail_heading": "About the job",
         "detail_text": "This generated description exercises the complete deterministic intake boundary.",
@@ -174,7 +198,7 @@ def build_private_inputs(private_root: Path) -> tuple[str, str]:
         "failure_code": None,
         "transaction_sha256": "5" * 64,
         "expected_transaction_sha256": "5" * 64,
-        "search_ref_sha256": text_digest(search_ref),
+        "search_ref_sha256": text_digest(selected_search_ref),
         "sink_ref_sha256": "6" * 64,
         "pre_observation_sha256": selected_artifact_sha,
         "pre_match_counts": selected_counts,
@@ -207,6 +231,14 @@ def build_private_inputs(private_root: Path) -> tuple[str, str]:
             "post_match_counts": selected_counts,
         },
     }
+    if mutation == "selection_title_hash_mismatch":
+        selected_receipt["selection"]["detail_title_name_sha256"] = "7" * 64
+    elif mutation == "selection_company_hash_mismatch":
+        selected_receipt["selection"]["detail_company_name_sha256"] = "7" * 64
+    elif mutation == "selected_stable_cycle_one":
+        selected_receipt["selection"]["stable_cycles_observed"] = 1
+    elif mutation == "receipt_transaction_digest_mismatch":
+        selected_receipt["expected_transaction_sha256"] = "8" * 64
     private_json(source_dir / "selected-receipt.json", selected_receipt)
     transaction = {
         "schema": "taey_apply_linkedin_intake_private_input_v1",
@@ -221,11 +253,11 @@ def build_private_inputs(private_root: Path) -> tuple[str, str]:
     return transaction_sha, card["card_digest"]
 
 
-def invoke(
+def connector_command(
     root: Path, database: Path, transaction_sha: str, receipt_name: str, turn: str
-) -> dict[str, object]:
+) -> tuple[list[str], Path]:
     receipt = root / "receipts" / "seat" / receipt_name
-    command = [
+    return [
         sys.executable,
         "-m",
         "taey_apply.cli",
@@ -247,12 +279,28 @@ def invoke(
         turn,
         "--process-generation",
         "7" * 32,
-    ]
+    ], receipt
+
+
+def connector_environment() -> dict[str, str]:
     environment = dict(os.environ)
     source_root = Path(__file__).resolve().parents[1] / "src"
     environment["PYTHONPATH"] = str(source_root)
+    return environment
+
+
+def invoke(
+    root: Path, database: Path, transaction_sha: str, receipt_name: str, turn: str
+) -> dict[str, object]:
+    command, receipt = connector_command(
+        root, database, transaction_sha, receipt_name, turn
+    )
     completed = subprocess.run(
-        command, check=True, capture_output=True, text=True, env=environment
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=connector_environment(),
     )
     if completed.stderr:
         raise RuntimeError("connector wrote unexpected stderr")
@@ -262,6 +310,105 @@ def invoke(
     if digest(receipt.read_bytes()) != result["receipt_sha256"]:
         raise RuntimeError("receipt digest differs from result")
     return result
+
+
+def invoke_failure(
+    root: Path,
+    database: Path,
+    transaction_sha: str,
+    receipt_name: str,
+    turn: str,
+    expected_failure_code: str,
+) -> None:
+    command, receipt = connector_command(
+        root, database, transaction_sha, receipt_name, turn
+    )
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        env=connector_environment(),
+    )
+    expected_stderr = (
+        f"IntakeContractError[{expected_failure_code}]: transaction stopped\n"
+    )
+    if (
+        completed.returncode != 2
+        or completed.stdout
+        or completed.stderr != expected_stderr
+        or receipt.exists()
+    ):
+        raise RuntimeError(f"adversarial case {turn} did not stop exactly")
+
+
+def database_counts(database: Path) -> tuple[int, int, int]:
+    connection = sqlite3.connect(database)
+    counts = tuple(
+        int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        for table in ("jobs", "applications", "apply_runs")
+    )
+    connection.close()
+    return counts
+
+
+def run_failure_case(
+    base: Path,
+    *,
+    name: str,
+    expected_failure_code: str,
+    mutation: str | None = None,
+    database_shape: str = "canonical",
+) -> None:
+    case_root = base / "adversarial" / name
+    private_root = case_root / "private"
+    database_root = case_root / "database"
+    private_root.mkdir(mode=0o700, parents=True)
+    database_root.mkdir(mode=0o700)
+    private_root.chmod(0o700)
+    database_root.chmod(0o700)
+    database = database_root / "jobs.db"
+    create_database(
+        database,
+        unique_url=database_shape not in {"missing_unique", "duplicate_urls"},
+    )
+    transaction_sha, _card_digest = build_private_inputs(
+        private_root, mutation=mutation
+    )
+    if database_shape == "duplicate_urls":
+        connection = sqlite3.connect(database)
+        canonical_url = "https://www.linkedin.com/jobs/view/1234567890/"
+        connection.execute("INSERT INTO jobs(url) VALUES(?)", (canonical_url,))
+        connection.execute("INSERT INTO jobs(url) VALUES(?)", (canonical_url,))
+        connection.commit()
+        connection.close()
+    elif database_shape == "existing_conflict":
+        connection = sqlite3.connect(database)
+        connection.execute(
+            "INSERT INTO jobs(url,source,company,title,location,description,first_seen) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (
+                "https://www.linkedin.com/jobs/view/1234567890/",
+                "linkedin:ui",
+                "Different company",
+                "Example role",
+                "Remote",
+                "This generated description exercises the complete deterministic intake boundary.",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        connection.commit()
+        connection.close()
+    before = database_counts(database)
+    invoke_failure(
+        private_root,
+        database,
+        transaction_sha,
+        f"{name}.json",
+        name,
+        expected_failure_code,
+    )
+    if database_counts(database) != before:
+        raise RuntimeError(f"adversarial case {name} changed database state")
 
 
 def main() -> int:
@@ -301,6 +448,85 @@ def main() -> int:
             or apply_runs != 0
         ):
             raise RuntimeError("deterministic intake postcondition failed")
+        adversarial_cases = [
+            {
+                "name": "database_missing_url_uniqueness",
+                "expected_failure_code": "database_contract_invalid",
+                "database_shape": "missing_unique",
+            },
+            {
+                "name": "database_duplicate_url_rows",
+                "expected_failure_code": "database_contract_invalid",
+                "database_shape": "duplicate_urls",
+            },
+            {
+                "name": "leading_zero_job_id",
+                "expected_failure_code": "pair_mismatch",
+                "mutation": "leading_zero_job_id",
+            },
+            {
+                "name": "non_ascii_job_id",
+                "expected_failure_code": "pair_mismatch",
+                "mutation": "non_ascii_job_id",
+            },
+            {
+                "name": "encoded_job_id_alias",
+                "expected_failure_code": "pair_mismatch",
+                "mutation": "encoded_job_id_alias",
+            },
+            {
+                "name": "card_digest_mismatch",
+                "expected_failure_code": "source_artifact_invalid",
+                "mutation": "card_digest_mismatch",
+            },
+            {
+                "name": "search_ref_mismatch",
+                "expected_failure_code": "pair_mismatch",
+                "mutation": "search_ref_mismatch",
+            },
+            {
+                "name": "selection_title_hash_mismatch",
+                "expected_failure_code": "pair_mismatch",
+                "mutation": "selection_title_hash_mismatch",
+            },
+            {
+                "name": "selection_company_hash_mismatch",
+                "expected_failure_code": "pair_mismatch",
+                "mutation": "selection_company_hash_mismatch",
+            },
+            {
+                "name": "receipt_lineage_mismatch",
+                "expected_failure_code": "source_receipt_invalid",
+                "mutation": "receipt_lineage_mismatch",
+            },
+            {
+                "name": "receipt_digest_mismatch",
+                "expected_failure_code": "source_receipt_invalid",
+                "mutation": "receipt_digest_mismatch",
+            },
+            {
+                "name": "receipt_transaction_digest_mismatch",
+                "expected_failure_code": "source_receipt_invalid",
+                "mutation": "receipt_transaction_digest_mismatch",
+            },
+            {
+                "name": "search_stable_cycle_one",
+                "expected_failure_code": "source_receipt_invalid",
+                "mutation": "search_stable_cycle_one",
+            },
+            {
+                "name": "selected_stable_cycle_one",
+                "expected_failure_code": "source_receipt_invalid",
+                "mutation": "selected_stable_cycle_one",
+            },
+            {
+                "name": "existing_row_conflict",
+                "expected_failure_code": "existing_row_conflict",
+                "database_shape": "existing_conflict",
+            },
+        ]
+        for case in adversarial_cases:
+            run_failure_case(base, **case)
         print(
             json.dumps(
                 {
@@ -311,6 +537,7 @@ def main() -> int:
                     "applications_rows": applications,
                     "apply_runs_rows": apply_runs,
                     "null_boundary": row[1:] == (None, None, None),
+                    "adversarial_cases": len(adversarial_cases),
                     "verdict": "PASS",
                 },
                 sort_keys=True,
