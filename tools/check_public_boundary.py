@@ -51,6 +51,7 @@ REQUIRED_FILES = {
     "README.md",
     "SECURITY.md",
     "docs/ARCHITECTURE.md",
+    "docs/LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md",
     "docs/PRIVATE_BOUNDARY.md",
     "pyproject.toml",
     "schemas/linkedin-intake-private-input-v1.json",
@@ -59,6 +60,9 @@ REQUIRED_FILES = {
     "src/taey_apply/cli.py",
     "src/taey_apply/contract.py",
     "src/taey_apply/linkedin_intake.py",
+    "src/taey_apply/prepare_cli.py",
+    "src/taey_apply/preparer.py",
+    "tools/validate_preparer.py",
 }
 
 

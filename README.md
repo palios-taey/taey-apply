@@ -29,37 +29,34 @@ The connector recognizes the public receipt/artifact contracts emitted by `palio
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install .
+taey-prepare-linkedin-intake --help
 taey-linkedin-intake --help
 ```
 
 There are no runtime dependencies outside the Python standard library.
 
-## Parent-side invocation
+## Canonical production sequence
 
-A trusted parent runtime creates a canonical private transaction, keeps every referenced artifact beneath an owner-controlled `0700` private root, and invokes the CLI once. Paths are mandatory parent-side arguments; there are no machine-specific defaults.
+A trusted parent writes the seven private transaction fields to an owner-controlled `0400` draft beneath the configured `0700` private root. It never hand-writes the final transaction. `taey-prepare-linkedin-intake` reserves the fresh identity, validates the draft and exact four-source pairing, writes canonical no-newline bytes once, freezes the transaction `0400`, and returns only compact preflight evidence. A refusal after root and identity acceptance writes an immutable terminal marker so the identity cannot be retried through preparation or Presence.
 
 ```bash
-taey-linkedin-intake \
+taey-prepare-linkedin-intake \
   --private-root "$TAEY_APPLY_PRIVATE_ROOT" \
-  --database "$TAEY_APPLY_DB" \
-  --transaction-file "$TAEY_APPLY_PRIVATE_ROOT/transactions/SEAT/CORRELATION.json" \
-  --expected-transaction-sha256 64HEX \
-  --receipt-file "$TAEY_APPLY_PRIVATE_ROOT/receipts/SEAT/CORRELATION.json" \
-  --requester PUBLIC_SAFE_SEAT \
-  --turn-id PUBLIC_SAFE_TURN \
-  --correlation-id PUBLIC_SAFE_CORRELATION \
-  --process-generation 32HEX
+  --draft-file "$TAEY_APPLY_DRAFT_FILE" \
+  --seat-id "$TAEY_APPLY_SEAT_ID" \
+  --correlation-id "$TAEY_APPLY_CORRELATION_ID"
 ```
 
-The model-facing tool should have an empty object schema. The parent resolves the frozen private transaction from seat and correlation lineage; Taey never supplies paths, card names, company names, titles, descriptions, or job IDs.
+Verify the compact result, then invoke Taey's empty-object `linkedin_application_intake` tool exactly once through the configured Presence proxy. A failed, claimed, or completed identity is never retried. The full commands and postconditions live only in the [canonical LinkedIn application-intake runbook](docs/LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md).
 
-See [Private boundary](docs/PRIVATE_BOUNDARY.md), [Architecture](docs/ARCHITECTURE.md), and the versioned JSON schemas in [`schemas/`](schemas/).
+Taey never supplies paths, card names, company names, titles, descriptions, or job IDs. See [Private boundary](docs/PRIVATE_BOUNDARY.md), [Architecture](docs/ARCHITECTURE.md), and the versioned JSON schemas in [`schemas/`](schemas/).
 
 ## Mechanical gates
 
 ```bash
 python3 tools/check_public_boundary.py
 python3 -m pip install .
+python3 tools/validate_preparer.py
 python3 tools/validate_contract.py
 ```
 
@@ -67,4 +64,4 @@ These gates validate packaging and the deterministic data boundary with generate
 
 ## Status
 
-Version `0.1.0` implements capture-to-unclassified-intake only. Classification, scoring, ATS interaction, and application actions are deliberately absent.
+Version `0.1.1` implements deterministic transaction preparation and capture-to-unclassified-intake only. Classification, scoring, ATS interaction, and application actions are deliberately absent.
