@@ -104,3 +104,30 @@ application, message, or outward action occurred.
 This qualification applies only to the pinned commits and receipt above. It is
 not qualification of private policy evaluation, scoring, ATS operation, or the
 application loop.
+
+### Classifier-import repair control run
+
+A fresh production identity qualified the repaired parent-only preparer and the
+existing empty-object Taey connector on 2026-08-26 from clean public checkouts:
+
+- `taey-apply` merge commit `9aa17bf9b9a43987d243b47fdd3794ce483c4de3`
+  containing reviewed head `5c7ca3d056eed1fb073095bad3f547dfa66aa57c`;
+- `taey-presence` `4f1751e4c0bd80d77b91a3bcae5248e379839537`;
+- immutable private terminal receipt SHA-256
+  `b2c8423bdc6fc8a26317773f16d5ec8747b10c2bd5b68e341c5a1f55a19ef899`;
+- captured Chat-completion SHA-256
+  `51cd20f20945c2d2ad10fa12483a39672d4128b144cf66188e0145c59efb9de6`.
+
+The preparer and Taey identity were each invoked exactly once. The connector
+observed and wrote one record, changed only `verdict`, preserved the stable
+non-verdict row digest, and left `kill_reason`, `detail`, `score`, and
+`applied_at` SQL `NULL`. Jobs, applications, and apply-run counts remained
+2,278, 49, and 593; the jobs table exposed zero triggers. The outer transaction,
+Presence claim, connector attempt, terminal receipt, and captured completion
+were owner-controlled mode-`0400` files. Terminal cleanup left zero active turns
+and zero display leases. No display, UI, feed, ATS, application, message, or
+other outward action occurred.
+
+This control run qualifies the pinned classifier-import repair together with
+the already-qualified commit connector. It does not qualify the private policy's
+semantic correctness, scoring, ATS operation, or the application loop.
