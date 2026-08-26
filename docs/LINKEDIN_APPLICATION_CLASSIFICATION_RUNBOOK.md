@@ -68,6 +68,23 @@ Independently prove:
 
 The first mismatch is terminal. Preserve the claim, attempt marker, receipt or partial receipt, compact output, database measurement, and exact public commit for reconciliation. Do not delete a marker, reverse a verdict, create a substitute receipt, or retry automatically.
 
-## Qualification status
+## Qualified production baseline
 
-The connector has mechanical generated-state coverage only until a clean reviewed commit completes the bounded real production sequence. Do not describe it as production-qualified before that observation exists.
+The bounded one-shot Taey acceptance completed on 2026-08-26 from clean public checkouts:
+
+- `taey-apply` `f3560aae4777bb8396ad8ae3cc98b2bec0dc23b1`;
+- `taey-presence` `7c2b1e79f346921c83a8829697b0ffcb0dfb9bc9`;
+- immutable private terminal receipt SHA-256 `9732a6f1ef11679af0a67f26fa6524b8f02344946652673b0d4a7206ef710e38`.
+
+The frozen Taey identity was invoked exactly once. The connector observed and
+wrote exactly one row, changed only `verdict`, preserved the stable non-verdict
+row digest, left `score` and `applied_at` SQL `NULL`, and recorded equal
+before/after counts for jobs, applications, and apply runs inside the atomic
+transition. The scorer remained inactive. The transaction, Presence claim,
+connector attempt, terminal receipt, and captured completion response were all
+owner-controlled mode-`0400` files. No display, UI, feed operation, ATS action,
+application, message, or outward action occurred.
+
+This qualification applies only to the pinned commits and receipt above. It is
+not qualification of private policy evaluation, scoring, ATS operation, or the
+application loop.
