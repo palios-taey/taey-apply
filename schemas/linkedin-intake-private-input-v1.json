@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/linkedin-intake-private-input-v1.json",
+  "title": "Private LinkedIn capture intake transaction",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_linkedin_intake_private_input_v1"},
+    "operation": {"const": "ingest_linkedin_captured_job"},
+    "search_receipt_ref": {"$ref": "#/$defs/private_ref"},
+    "search_artifact_ref": {"$ref": "#/$defs/private_ref"},
+    "selected_receipt_ref": {"$ref": "#/$defs/private_ref"},
+    "selected_artifact_ref": {"$ref": "#/$defs/private_ref"},
+    "card_digest": {"$ref": "#/$defs/digest"}
+  },
+  "required": [
+    "schema",
+    "operation",
+    "search_receipt_ref",
+    "search_artifact_ref",
+    "selected_receipt_ref",
+    "selected_artifact_ref",
+    "card_digest"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "private_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*//)[^\\u0000-\\u001f\\u007f]+$"
+    }
+  }
+}

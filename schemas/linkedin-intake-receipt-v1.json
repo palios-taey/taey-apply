@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/linkedin-intake-receipt-v1.json",
+  "title": "Immutable LinkedIn capture intake receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_linkedin_intake_receipt_v1"},
+    "operation": {"const": "ingest_linkedin_captured_job"},
+    "connector_version": {"const": "0.1.0"},
+    "requester": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "turn_lineage_sha256": {"$ref": "#/$defs/digest"},
+    "correlation_id_sha256": {"$ref": "#/$defs/digest"},
+    "transaction_sha256": {"$ref": "#/$defs/digest"},
+    "state": {"enum": ["captured_unclassified", "already_present"]},
+    "ok": {"const": true},
+    "failure_code": {"type": "null"},
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "search_artifact_sha256": {"$ref": "#/$defs/digest"},
+        "search_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "selected_artifact_sha256": {"$ref": "#/$defs/digest"},
+        "selected_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "search_hands_commit": {"$ref": "#/$defs/commit"},
+        "selected_hands_commit": {"$ref": "#/$defs/commit"},
+        "card_digest": {"$ref": "#/$defs/digest"}
+      },
+      "required": [
+        "search_artifact_sha256",
+        "search_receipt_sha256",
+        "selected_artifact_sha256",
+        "selected_receipt_sha256",
+        "search_hands_commit",
+        "selected_hands_commit",
+        "card_digest"
+      ]
+    },
+    "pairing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "card_match_count": {"const": 1},
+        "selection_identity_match_count": {"const": 3},
+        "search_reference_match_count": {"const": 4},
+        "current_job_id_match_count": {"const": 1},
+        "job_identity_sha256": {"$ref": "#/$defs/digest"},
+        "capture_digest": {"$ref": "#/$defs/digest"}
+      },
+      "required": [
+        "card_match_count",
+        "selection_identity_match_count",
+        "search_reference_match_count",
+        "current_job_id_match_count",
+        "job_identity_sha256",
+        "capture_digest"
+      ]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "sqlite_insert_once"},
+        "verdict": {"enum": ["written", "already_present"]},
+        "records_observed": {"const": 1},
+        "records_written": {"type": "integer", "minimum": 0, "maximum": 1},
+        "row_digest": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["kind", "verdict", "records_observed", "records_written", "row_digest"]
+    },
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "exact_capture_row_present"},
+        "verdict": {"const": "satisfied"},
+        "jobs_match_count": {"const": 1},
+        "verdict_is_null": {"type": "boolean"},
+        "score_is_null": {"type": "boolean"},
+        "applied_at_is_null": {"type": "boolean"},
+        "applications_before": {"type": "integer", "minimum": 0},
+        "applications_after": {"type": "integer", "minimum": 0},
+        "apply_runs_before": {"type": "integer", "minimum": 0},
+        "apply_runs_after": {"type": "integer", "minimum": 0}
+      },
+      "required": [
+        "kind",
+        "verdict",
+        "jobs_match_count",
+        "verdict_is_null",
+        "score_is_null",
+        "applied_at_is_null",
+        "applications_before",
+        "applications_after",
+        "apply_runs_before",
+        "apply_runs_after"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "operation",
+    "connector_version",
+    "requester",
+    "turn_lineage_sha256",
+    "correlation_id_sha256",
+    "transaction_sha256",
+    "state",
+    "ok",
+    "failure_code",
+    "sources",
+    "pairing",
+    "action",
+    "postcondition"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+  }
+}

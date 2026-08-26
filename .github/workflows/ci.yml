@@ -1,0 +1,32 @@
+name: public-boundary
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Public boundary
+        run: python3 tools/check_public_boundary.py
+      - name: Cold import and CLI install
+        run: |
+          python3 -m pip install .
+          python3 -c "import taey_apply; print(taey_apply.__version__)"
+          taey-linkedin-intake --help
+      - name: Contract gate
+        run: python3 tools/validate_contract.py
+      - name: Build wheel
+        run: python3 -m pip wheel . --no-deps --wheel-dir dist
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
