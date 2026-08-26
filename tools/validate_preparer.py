@@ -42,6 +42,7 @@ def write_draft(path: Path, raw_bytes: bytes, *, mode: int = 0o400) -> Path:
 def command(root: Path, draft: Path, seat: str) -> list[str]:
     return [
         sys.executable,
+        "-P",
         "-m",
         "taey_apply.prepare_cli",
         "--private-root",
@@ -66,6 +67,97 @@ def invoke_success(root: Path, draft: Path, seat: str) -> dict[str, object]:
     if completed.stderr:
         raise RuntimeError("preparer wrote unexpected stderr")
     return json.loads(completed.stdout)
+
+
+def run_hostile_public_import_case(
+    base: Path, source_transaction: dict[str, object]
+) -> None:
+    root = base / "hostile-import-private"
+    root.mkdir(mode=0o700)
+    root.chmod(0o700)
+    build_private_inputs(root)
+    hostile_cwd = base / "hostile-cwd"
+    shadow_package = hostile_cwd / "taey_apply"
+    shadow_package.mkdir(mode=0o700, parents=True)
+    shadow_sentinel = hostile_cwd / "shadow-imported"
+    (shadow_package / "__init__.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(shadow_sentinel)!r}).write_text('shadowed')\n"
+        "raise RuntimeError('working-directory shadow imported')\n",
+        encoding="utf-8",
+    )
+    seat = "hostile-public-import"
+    draft = write_draft(
+        root / "drafts" / f"{seat}.json", canonical(source_transaction)
+    )
+    runbook = (
+        SOURCE_ROOT.parent / "docs" / "LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md"
+    ).read_text(encoding="utf-8")
+    prepare_section = runbook.split("## 1. Prepare once", 1)[1]
+    prepare_block = prepare_section.split("```bash\n", 1)[1].split("\n```", 1)[0]
+    required_invocation = (
+        'PYTHONPATH="$TAEY_APPLY_PUBLIC_ROOT/src" \\\n'
+        '    "$TAEY_APPLY_PYTHON" -P -m taey_apply.prepare_cli \\'
+    )
+    if (
+        required_invocation not in prepare_block
+        or "taey-prepare-linkedin-intake" in prepare_block
+    ):
+        raise RuntimeError("runbook does not use the exact public module invocation")
+    runbook_environment = environment()
+    runbook_environment.update(
+        {
+            "TAEY_APPLY_PUBLIC_ROOT": str(SOURCE_ROOT.parent.resolve()),
+            "TAEY_APPLY_PYTHON": str(Path(sys.executable).resolve()),
+            "TAEY_APPLY_PRIVATE_ROOT": str(root),
+            "TAEY_APPLY_DRAFT_FILE": str(draft),
+            "TAEY_APPLY_SEAT_ID": seat,
+            "TAEY_APPLY_CORRELATION_ID": seat,
+        }
+    )
+    completed = subprocess.run(
+        [
+            "bash",
+            "-eu",
+            "-o",
+            "pipefail",
+            "-c",
+            prepare_block
+            + "\nprintf '%s\\n' \"$TAEY_APPLY_PREPARATION_RESULT\"\n",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=runbook_environment,
+        cwd=hostile_cwd,
+    )
+    result = json.loads(completed.stdout)
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-P",
+            "-c",
+            (
+                "from pathlib import Path; "
+                "import taey_apply.prepare_cli as module; "
+                "print(Path(module.__file__).resolve())"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=runbook_environment,
+        cwd=hostile_cwd,
+    )
+    expected_module = (SOURCE_ROOT / "taey_apply" / "prepare_cli.py").resolve()
+    if (
+        result.get("state") != "prepared_unclaimed"
+        or shadow_sentinel.exists()
+        or completed.stderr
+        or probe.stderr
+        or probe.stdout.strip() != str(expected_module)
+    ):
+        raise RuntimeError("explicit public source import was shadowed")
 
 
 def invoke_failure(
@@ -319,12 +411,14 @@ def run_existing_identity_case(root: Path, source_transaction: dict[str, object]
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="taey-apply-preparer-") as temporary:
-        root = Path(temporary) / "private"
+        base = Path(temporary)
+        root = base / "private"
         root.mkdir(mode=0o700)
         root.chmod(0o700)
         build_private_inputs(root)
         source_path = root / "transactions" / "seat" / "intake.json"
         source_transaction = json.loads(source_path.read_text(encoding="utf-8"))
+        run_hostile_public_import_case(base, source_transaction)
         run_success_and_replay(root, source_transaction)
         postwrite_failures = run_postwrite_finalization_failures(
             root, source_transaction
@@ -346,6 +440,8 @@ def main() -> int:
                     ),
                     "postwrite_terminal_markers": postwrite_failures,
                     "presence_receipt_precheck_refusals": postwrite_failures,
+                    "explicit_public_python_hostile_cwd": True,
+                    "exact_public_source_imported": True,
                     "canonical_no_trailing_newline": True,
                     "private_values_exposed": False,
                     "verdict": "PASS",

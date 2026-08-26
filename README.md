@@ -29,18 +29,21 @@ The connector recognizes the public receipt/artifact contracts emitted by `palio
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install .
-taey-prepare-linkedin-intake --help
-taey-linkedin-intake --help
+python -P -m taey_apply.prepare_cli --help
+python -P -m taey_apply.cli --help
 ```
 
 There are no runtime dependencies outside the Python standard library.
 
 ## Canonical production sequence
 
-A trusted parent writes the seven private transaction fields to an owner-controlled `0400` draft beneath the configured `0700` private root. It never hand-writes the final transaction. `taey-prepare-linkedin-intake` reserves the fresh identity, validates the draft and exact four-source pairing, writes canonical no-newline bytes once, freezes the transaction `0400`, and returns only compact preflight evidence. A refusal after root and identity acceptance writes an immutable terminal marker so the identity cannot be retried through preparation or Presence.
+A trusted parent writes the seven private transaction fields to an owner-controlled `0400` draft beneath the configured `0700` private root. It never hand-writes the final transaction. The preparer reserves the fresh identity, validates the draft and exact four-source pairing, writes canonical no-newline bytes once, freezes the transaction `0400`, and returns only compact preflight evidence. A refusal after root and identity acceptance writes an immutable terminal marker so the identity cannot be retried through preparation or Presence.
+
+Production does not depend on an installed console command, an activated environment, `PATH`, or the current directory. `TAEY_APPLY_PUBLIC_ROOT` is the canonical absolute path to the exact reviewed public checkout, and `TAEY_APPLY_PYTHON` is the canonical absolute path to the explicit Python interpreter used by Presence.
 
 ```bash
-taey-prepare-linkedin-intake \
+PYTHONPATH="$TAEY_APPLY_PUBLIC_ROOT/src" \
+  "$TAEY_APPLY_PYTHON" -P -m taey_apply.prepare_cli \
   --private-root "$TAEY_APPLY_PRIVATE_ROOT" \
   --draft-file "$TAEY_APPLY_DRAFT_FILE" \
   --seat-id "$TAEY_APPLY_SEAT_ID" \
