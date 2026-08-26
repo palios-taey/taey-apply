@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a separate one-shot LinkedIn classification commit connector that consumes a private digest-bound parent claim, updates exactly one qualified NULL row's verdict, and emits a privacy-safe immutable receipt without policy evaluation, scoring, ATS, UI, or outward authority.
+
+## Unreleased
+
 - Record two independently checked, one-call production intake proofs for the exact public and Presence commits, including exact pairing, unchanged application state, unclassified rows, and zero-turn cleanup.
 - Add a deterministic private-draft preparer that reserves one identity, validates the existing source-pairing contract, writes canonical no-newline transaction bytes, and terminalizes every accepted-identity refusal against reuse.
 - Add the canonical prepare, verify, and one-Taey-call production runbook.

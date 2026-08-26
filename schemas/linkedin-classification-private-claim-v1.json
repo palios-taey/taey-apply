@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/linkedin-classification-private-claim-v1.json",
+  "title": "Private frozen LinkedIn classification claim",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_linkedin_classification_claim_v1"},
+    "operation": {"const": "classify_frozen_linkedin_intake"},
+    "intake_transaction_ref": {"$ref": "#/$defs/private_ref"},
+    "intake_transaction_sha256": {"$ref": "#/$defs/digest"},
+    "intake_receipt_ref": {"$ref": "#/$defs/private_ref"},
+    "intake_receipt_sha256": {"$ref": "#/$defs/digest"},
+    "prewrite_row_sha256": {"$ref": "#/$defs/digest"},
+    "stable_row_sha256": {"$ref": "#/$defs/digest"},
+    "policy_input_sha256": {"$ref": "#/$defs/digest"},
+    "classifier_sha256": {"$ref": "#/$defs/digest"},
+    "verdict": {"enum": ["PASS", "KILLED"]}
+  },
+  "required": [
+    "schema",
+    "operation",
+    "intake_transaction_ref",
+    "intake_transaction_sha256",
+    "intake_receipt_ref",
+    "intake_receipt_sha256",
+    "prewrite_row_sha256",
+    "stable_row_sha256",
+    "policy_input_sha256",
+    "classifier_sha256",
+    "verdict"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "private_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*//)[^\\u0000-\\u001f\\u007f]+$"
+    }
+  }
+}
