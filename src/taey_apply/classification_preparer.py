@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
+from enum import StrEnum
 import os
 from pathlib import Path
 import sqlite3
@@ -91,6 +93,36 @@ class ClassificationPreparationError(RuntimeError):
     def __init__(self, failure_code: str, message: str) -> None:
         super().__init__(message)
         self.failure_code = failure_code
+
+
+class PreparationStage(StrEnum):
+    DATABASE_VALIDATE = "database_validate"
+    POLICY_ARTIFACT_READ = "policy_artifact_read"
+    PRIORITY_BOARDS_ARTIFACT_READ = "priority_boards_artifact_read"
+    CLASSIFIER_ARTIFACT_READ = "classifier_artifact_read"
+    POLICY_VALIDATE = "policy_validate"
+    PRIORITY_BOARDS_VALIDATE = "priority_boards_validate"
+    CLASSIFIER_LOAD = "classifier_load"
+    INTAKE_QUALIFY = "intake_qualify"
+    DATABASE_SNAPSHOT = "database_snapshot"
+    PRISTINE_ROW_VALIDATE = "pristine_row_validate"
+    POLICY_INPUT_DIGEST = "policy_input_digest"
+    CLASSIFIER_INVOKE = "classifier_invoke"
+    CLASSIFIER_DECISION_VALIDATE = "classifier_decision_validate"
+    CLAIM_VALIDATE = "claim_validate"
+    REPLAY_CHECK = "replay_check"
+    CLAIM_WRITE = "claim_write"
+    CLAIM_READBACK = "claim_readback"
+    INTAKE_REQUALIFY = "intake_requalify"
+    DATABASE_REOBSERVE = "database_reobserve"
+    PRISTINE_ROW_REVALIDATE = "pristine_row_revalidate"
+    CLAIM_POSTCONDITION = "claim_postcondition"
+
+
+@dataclass(slots=True)
+class PreparationProgress:
+    stage: PreparationStage = PreparationStage.DATABASE_VALIDATE
+    classifier_invoked: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,7 +437,24 @@ def _load_classifier(
 ) -> Any:
     module = ModuleType("taey_private_classification_policy")
     module.__file__ = "<pinned-private-classifier>"
-    module.__dict__["PRIORITY_BOARDS"] = [list(row) for row in priority_boards]
+    boards_module = ModuleType("boards")
+    boards_module.__dict__["PRIORITY_BOARDS"] = [list(row) for row in priority_boards]
+    original_import = builtins.__import__
+
+    def classifier_import(
+        name: str,
+        globals_value: Mapping[str, Any] | None = None,
+        locals_value: Mapping[str, Any] | None = None,
+        fromlist: Sequence[str] = (),
+        level: int = 0,
+    ) -> Any:
+        if level == 0 and name == "boards":
+            return boards_module
+        return original_import(name, globals_value, locals_value, fromlist, level)
+
+    classifier_builtins = dict(vars(builtins))
+    classifier_builtins["__import__"] = classifier_import
+    module.__dict__["__builtins__"] = classifier_builtins
     try:
         code = compile(raw_bytes, module.__file__, "exec", dont_inherit=True)
         exec(code, module.__dict__)
@@ -550,6 +599,7 @@ def _qualified_intake(identity: PreparationIdentity) -> Any:
 def _write_refusal(
     identity: PreparationIdentity,
     failure_code: str,
+    progress: PreparationProgress,
 ) -> None:
     marker = {
         "schema": REFUSAL_SCHEMA,
@@ -561,31 +611,46 @@ def _write_refusal(
         "claim_identity_sha256": sha256_hex(
             str(identity.manifest["claim_ref"]).encode("utf-8")
         ),
+        "stage": progress.stage.value,
+        "classifier_invoked": progress.classifier_invoked,
     }
-    _write_frozen_json(identity.refusal_path, marker, "classification preparation refusal")
+    _write_frozen_json(
+        identity.refusal_path, marker, "classification preparation refusal"
+    )
 
 
 def _prepare(
     identity: PreparationIdentity,
     database: Path,
+    progress: PreparationProgress,
 ) -> dict[str, object]:
     manifest = identity.manifest
+    progress.stage = PreparationStage.POLICY_ARTIFACT_READ
     policy, policy_bytes = _read_bound_json(
         identity, "policy_artifact_ref", "policy_artifact_sha256", "policy artifact"
     )
+    progress.stage = PreparationStage.PRIORITY_BOARDS_ARTIFACT_READ
     priority_value, priority_bytes = _read_bound_json(
         identity,
         "priority_boards_artifact_ref",
         "priority_boards_artifact_sha256",
         "priority boards artifact",
     )
+    progress.stage = PreparationStage.CLASSIFIER_ARTIFACT_READ
     classifier_bytes = _read_classifier(identity)
+    progress.stage = PreparationStage.POLICY_VALIDATE
     filter_rev = _policy_revision(policy)
+    progress.stage = PreparationStage.PRIORITY_BOARDS_VALIDATE
     priority_boards = _priority_boards(priority_value)
+    progress.stage = PreparationStage.CLASSIFIER_LOAD
     classifier = _load_classifier(classifier_bytes, filter_rev, priority_boards)
+    progress.stage = PreparationStage.INTAKE_QUALIFY
     qualified = _qualified_intake(identity)
+    progress.stage = PreparationStage.DATABASE_SNAPSHOT
     before = _read_snapshot(database, qualified.capture.canonical_url)
+    progress.stage = PreparationStage.PRISTINE_ROW_VALIDATE
     job = _validate_pristine_snapshot(before, qualified)
+    progress.stage = PreparationStage.POLICY_INPUT_DIGEST
     prewrite_sha256 = row_sha256(before.columns, before.row)
     stable_sha256 = stable_row_sha256(before.columns, before.row)
     classifier_sha256 = sha256_hex(classifier_bytes)
@@ -604,7 +669,10 @@ def _prepare(
             }
         )
     )
+    progress.stage = PreparationStage.CLASSIFIER_INVOKE
+    progress.classifier_invoked = True
     decision = classifier(job)
+    progress.stage = PreparationStage.CLASSIFIER_DECISION_VALIDATE
     if (
         not isinstance(decision, tuple)
         or len(decision) != 3
@@ -630,6 +698,7 @@ def _prepare(
         "classifier_sha256": classifier_sha256,
         "verdict": verdict,
     }
+    progress.stage = PreparationStage.CLAIM_VALIDATE
     _validate_claim(claim_value)
     claim_sha256 = sha256_hex(canonical_json_bytes(claim_value))
     attempt_path = (
@@ -637,19 +706,26 @@ def _prepare(
         / "classification-attempts"
         / f"{claim_sha256}.json"
     )
+    progress.stage = PreparationStage.REPLAY_CHECK
     if _path_exists(attempt_path):
         raise ClassificationPreparationError(
             "REPLAY_REJECTED", "classification claim was already attempted"
         )
+    progress.stage = PreparationStage.CLAIM_WRITE
     claim_bytes, claim_sha256 = _write_frozen_json(
         identity.claim_path, claim_value, "classification claim"
     )
+    progress.stage = PreparationStage.CLAIM_READBACK
     read_claim, read_claim_sha256 = read_classification_claim(
         identity.private_root, identity.claim_path, claim_sha256
     )
+    progress.stage = PreparationStage.INTAKE_REQUALIFY
     requalified = load_qualified_intake(identity.private_root, read_claim)
+    progress.stage = PreparationStage.DATABASE_REOBSERVE
     after = _read_snapshot(database, requalified.capture.canonical_url)
+    progress.stage = PreparationStage.PRISTINE_ROW_REVALIDATE
     _validate_pristine_snapshot(after, requalified)
+    progress.stage = PreparationStage.CLAIM_POSTCONDITION
     if (
         read_claim_sha256 != claim_sha256
         or canonical_json_bytes(claim_value) != claim_bytes
@@ -692,9 +768,10 @@ def prepare_classification_claim(
     identity = _accept_identity(
         private_root_value, manifest_path_value, expected_manifest_sha256
     )
+    progress = PreparationProgress()
     try:
         database = validate_database_path(database_path_value)
-        return _prepare(identity, database)
+        return _prepare(identity, database, progress)
     except BaseException as exc:
         if isinstance(exc, (KeyboardInterrupt, GeneratorExit)):
             raise
@@ -703,7 +780,7 @@ def prepare_classification_claim(
             identity.refusal_path
         ):
             try:
-                _write_refusal(identity, failure.failure_code)
+                _write_refusal(identity, failure.failure_code, progress)
             except ClassificationPreparationError as marker_error:
                 raise ClassificationPreparationError(
                     "PREPARATION_WRITE_INDETERMINATE",
