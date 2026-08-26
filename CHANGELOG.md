@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a deterministic private-draft preparer that reserves one identity, validates the existing source-pairing contract, writes canonical no-newline transaction bytes, and terminalizes every accepted-identity refusal against reuse.
+- Add the canonical prepare, verify, and one-Taey-call production runbook.
 - Require an exact `TEXT` URL primary key or single-column unique identity before intake.
 - Derive the write count from SQLite and observe exactly one matching URL row before success.
 - Reject noncanonical job IDs and source receipts with fewer than two required stable cycles.

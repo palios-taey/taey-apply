@@ -23,7 +23,10 @@ jobs:
         run: |
           python3 -m pip install .
           python3 -c "import taey_apply; print(taey_apply.__version__)"
+          taey-prepare-linkedin-intake --help
           taey-linkedin-intake --help
+      - name: Transaction preparer gate
+        run: python3 tools/validate_preparer.py
       - name: Contract gate
         run: python3 tools/validate_contract.py
       - name: Build wheel

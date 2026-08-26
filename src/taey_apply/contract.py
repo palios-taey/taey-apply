@@ -14,6 +14,18 @@ RECEIPT_SCHEMA = "taey_apply_linkedin_intake_receipt_v1"
 RESULT_SCHEMA = "taey_apply_linkedin_intake_result_v1"
 OPERATION = "ingest_linkedin_captured_job"
 
+PRIVATE_INPUT_KEYS = frozenset(
+    {
+        "schema",
+        "operation",
+        "search_receipt_ref",
+        "search_artifact_ref",
+        "selected_receipt_ref",
+        "selected_artifact_ref",
+        "card_digest",
+    }
+)
+
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
@@ -275,16 +287,12 @@ def read_private_input(
         raise IntakeContractError(
             "transaction_digest_mismatch", "transaction digest differs from claim"
         )
-    expected_keys = {
-        "schema",
-        "operation",
-        "search_receipt_ref",
-        "search_artifact_ref",
-        "selected_receipt_ref",
-        "selected_artifact_ref",
-        "card_digest",
-    }
-    if set(value) != expected_keys:
+    validate_private_input_value(value)
+    return value, actual_sha256
+
+
+def validate_private_input_value(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != PRIVATE_INPUT_KEYS:
         raise IntakeContractError(
             "private_input_invalid", "transaction fields are incomplete or unknown"
         )
@@ -300,7 +308,7 @@ def read_private_input(
     ):
         _validate_relative_reference(value[key], key)
     validate_digest(value["card_digest"], "card digest")
-    return value, actual_sha256
+    return value
 
 
 def validate_database_path(value: str | os.PathLike[str]) -> Path:
