@@ -21,14 +21,14 @@ The preparer mechanically:
 
 1. selects one row bound to one qualified intake receipt;
 2. opens SQLite in read-only mode, enables `query_only`, and requires one exact pristine row with `verdict`, `kill_reason`, `detail`, `score`, and `applied_at` all SQL `NULL`;
-3. reads and verifies the pinned private artifacts and invokes the exact classifier bytes once;
+3. reads and verifies the pinned private artifacts, resolves only the classifier's exact absolute `boards` import to a classifier-local deep copy of the pinned priority boards, and invokes the exact classifier bytes once;
 4. accepts only exact `PASS` or `KILLED`;
 5. computes the complete prewrite row digest and stable non-verdict row digest using the connector's existing functions;
 6. computes `policy_input_sha256` over schema `taey_private_classification_policy_input_v1`, classifier SHA-256, exact `FILTER_REV`, the digestable complete row, and the canonical priority-board-list SHA-256;
 7. writes one canonical owner-controlled `0400` claim matching the existing `schemas/linkedin-classification-private-claim-v1.json` with `O_EXCL|O_NOFOLLOW`, fsync, and exact readback;
 8. requalifies the intake and reobserves the unchanged pristine row before returning only fixed state plus digests.
 
-A failure after claim/refusal identity acceptance and before claim publication writes the distinct immutable `0400` refusal marker. Existing claim or refusal identity is terminal. If claim publication becomes indeterminate, preserve it for reconciliation; never create a substitute claim or retry. Successful preparation creates no classification-attempt marker. That marker remains commit-owned by `classification_contract.py` and is created only by the one connector call below.
+A failure after claim/refusal identity acceptance and before claim publication writes the distinct immutable `0400` refusal marker. A new marker records the fixed preparation stage and whether classifier invocation was attempted, but never exception text, paths, row values, decision details, or a traceback. Existing claim or refusal identity—including an older marker without the two provenance fields—is terminal. If claim publication becomes indeterminate, preserve it for reconciliation; never create a substitute claim or retry. Successful preparation creates no classification-attempt marker. That marker remains commit-owned by `classification_contract.py` and is created only by the one connector call below.
 
 No raw job value, URL, policy rule, threshold, classifier source, or verdict enters Taey's request, the command line, or preparer stdout. The manifest and claim are private data. The public commit connector does not re-evaluate the private policy.
 

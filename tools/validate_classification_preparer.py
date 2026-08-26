@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from types import ModuleType
 
 import validate_contract
 
@@ -23,12 +24,15 @@ from taey_apply.classification_contract import (  # noqa: E402
     OPERATION,
 )
 from taey_apply.classification_preparer import (  # noqa: E402
+    ClassificationPreparationError,
     MANIFEST_OPERATION,
     MANIFEST_SCHEMA,
     POLICY_INPUT_SCHEMA,
     POLICY_SCHEMA,
+    PreparationStage,
     PRIORITY_BOARDS_SCHEMA,
     REFUSAL_SCHEMA,
+    _load_classifier,
 )
 from taey_apply.linkedin_classification import (  # noqa: E402
     _digestable_sqlite_value,
@@ -65,12 +69,19 @@ def private_json(path: Path, value: object) -> str:
 
 def database_state(database: Path) -> tuple[str, tuple[int, int, int]]:
     raw_digest = digest(database.read_bytes())
-    connection = sqlite3.connect(database)
-    counts = tuple(
-        int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
-        for table in ("jobs", "applications", "apply_runs")
+    connection = sqlite3.connect(
+        f"{database.as_uri()}?mode=ro", uri=True, isolation_level=None
     )
-    connection.close()
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        counts = tuple(
+            int(connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+            for table in ("jobs", "applications", "apply_runs")
+        )
+        if connection.total_changes != 0:
+            raise RuntimeError("read-only database measurement changed state")
+    finally:
+        connection.close()
     return raw_digest, (counts[0], counts[1], counts[2])
 
 
@@ -122,6 +133,7 @@ def setup_case(
     name: str,
     classifier_verdict: str,
     *,
+    classifier_source: bytes | None = None,
     track_invocation: bool = False,
 ) -> tuple[Path, Path, Path, str, dict[str, object]]:
     private_root = base / name / "private"
@@ -166,17 +178,22 @@ def setup_case(
         if track_invocation
         else ""
     )
-    classifier_source = (
-        "FILTER_REV = 12\n"
-        "_invocations = 0\n"
-        "def classify(job):\n"
-        "    global _invocations\n"
-        "    _invocations += 1\n"
-        "    if _invocations != 1:\n"
-        "        raise RuntimeError('classifier invoked more than once')\n"
-        + invocation_line
-        + f"    return ({classifier_verdict!r}, 'private reason', 'private detail')\n"
-    ).encode("utf-8")
+    if classifier_source is None:
+        classifier_source = (
+            "import json\n"
+            "FILTER_REV = 12\n"
+            "_invocations = 0\n"
+            "def classify(job):\n"
+            "    global _invocations\n"
+            "    from boards import PRIORITY_BOARDS\n"
+            "    _invocations += 1\n"
+            "    if _invocations != 1:\n"
+            "        raise RuntimeError('classifier invoked more than once')\n"
+            "    if not json.dumps(PRIORITY_BOARDS):\n"
+            "        raise RuntimeError('priority boards were not imported')\n"
+            + invocation_line
+            + f"    return ({classifier_verdict!r}, 'private reason', 'private detail')\n"
+        ).encode("utf-8")
     policy_path = identity_root / "policy.json"
     priority_path = identity_root / "priority-boards.json"
     classifier_path = identity_root / "classifier.py"
@@ -232,7 +249,7 @@ def run_success_case(
     base: Path, name: str, classifier_verdict: str
 ) -> dict[str, object]:
     private_root, database, manifest_path, manifest_sha256, expected = setup_case(
-        base, name, classifier_verdict
+        base, name, classifier_verdict, track_invocation=True
     )
     before = database_state(database)
     completed = subprocess.run(
@@ -247,7 +264,12 @@ def run_success_case(
     result = json.loads(completed.stdout)
     claim_path = expected["claim_path"]
     refusal_path = expected["refusal_path"]
-    if not isinstance(claim_path, Path) or not isinstance(refusal_path, Path):
+    invocation_marker = expected["invocation_marker"]
+    if (
+        not isinstance(claim_path, Path)
+        or not isinstance(refusal_path, Path)
+        or not isinstance(invocation_marker, Path)
+    ):
         raise RuntimeError("generated identity path type differs")
     claim_bytes = claim_path.read_bytes()
     claim = json.loads(claim_bytes.decode("utf-8"))
@@ -326,6 +348,7 @@ def run_success_case(
         or claim_stat.st_uid != os.geteuid()
         or refusal_path.exists()
         or attempt_path.exists()
+        or invocation_marker.read_bytes() != b"1"
         or database_state(database) != before
         or any(value in public_projection for value in forbidden)
     ):
@@ -350,6 +373,7 @@ def run_success_case(
         "claim_canonical_0400": True,
         "database_read_only": True,
         "existing_attempt_marker_absent": True,
+        "classifier_invocations": 1,
         "replay_refused": True,
         "stdout_digest_only": True,
     }
@@ -382,6 +406,20 @@ def run_refusal_case(base: Path) -> dict[str, object]:
         or refusal["schema"] != REFUSAL_SCHEMA
         or refusal["state"] != "preparation_refused"
         or refusal["failure_code"] != "PRIVATE_CLASSIFIER_INVALID"
+        or refusal["stage"] != PreparationStage.CLASSIFIER_DECISION_VALIDATE.value
+        or refusal["classifier_invoked"] is not True
+        or set(refusal)
+        != {
+            "schema",
+            "operation",
+            "ok",
+            "state",
+            "failure_code",
+            "manifest_sha256",
+            "claim_identity_sha256",
+            "stage",
+            "classifier_invoked",
+        }
         or refusal["manifest_sha256"] != manifest_sha256
         or canonical(refusal) != refusal_bytes
         or not stat.S_ISREG(refusal_stat.st_mode)
@@ -407,8 +445,159 @@ def run_refusal_case(base: Path) -> dict[str, object]:
     return {
         "claim_absent": True,
         "database_read_only": True,
+        "stage": PreparationStage.CLASSIFIER_DECISION_VALIDATE.value,
+        "classifier_invoked": True,
         "refusal_canonical_0400": True,
         "replay_refused": True,
+    }
+
+
+def run_import_adapter_case() -> dict[str, object]:
+    priority_boards = [["greenhouse", "example", "Example"]]
+    classifier_source = (
+        "import json\n"
+        "FILTER_REV = 12\n"
+        "_invocations = 0\n"
+        "def classify(job):\n"
+        "    global _invocations\n"
+        "    from boards import PRIORITY_BOARDS\n"
+        "    _invocations += 1\n"
+        "    PRIORITY_BOARDS[0][2] = 'classifier-local-copy'\n"
+        "    return ('PASS', '', json.dumps(PRIORITY_BOARDS, sort_keys=True))\n"
+    ).encode("utf-8")
+    classifier_digest = digest(classifier_source)
+    sentinel = ModuleType("boards")
+    sentinel.__dict__["PRIORITY_BOARDS"] = [["ambient", "wrong", "Wrong"]]
+    missing = object()
+    previous = sys.modules.get("boards", missing)
+    sys.modules["boards"] = sentinel
+    try:
+        classifier = _load_classifier(classifier_source, 12, priority_boards)
+        decision = classifier({})
+        exact_only_source = (
+            "FILTER_REV = 12\n"
+            "from boards.extra import PRIORITY_BOARDS\n"
+            "def classify(job):\n"
+            "    return ('PASS', '', '')\n"
+        ).encode("utf-8")
+        try:
+            _load_classifier(exact_only_source, 12, priority_boards)
+        except ClassificationPreparationError as exc:
+            exact_only_refused = exc.failure_code == "PRIVATE_CLASSIFIER_INVALID"
+        else:
+            exact_only_refused = False
+        if (
+            decision
+            != (
+                "PASS",
+                "",
+                '[["greenhouse", "example", "classifier-local-copy"]]',
+            )
+            or classifier.__globals__.get("_invocations") != 1
+            or priority_boards != [["greenhouse", "example", "Example"]]
+            or digest(classifier_source) != classifier_digest
+            or sys.modules.get("boards") is not sentinel
+            or not exact_only_refused
+        ):
+            raise RuntimeError("classifier-local import adapter contract differs")
+    finally:
+        if previous is missing:
+            sys.modules.pop("boards", None)
+        else:
+            sys.modules["boards"] = previous
+    if (previous is missing and "boards" in sys.modules) or (
+        previous is not missing and sys.modules.get("boards") is not previous
+    ):
+        raise RuntimeError("classifier import adapter contaminated global modules")
+    return {
+        "boards_import_is_classifier_local": True,
+        "deep_copy_preserved_input": True,
+        "exact_absolute_boards_only": True,
+        "other_imports_delegated": True,
+        "classifier_bytes_unchanged": True,
+        "classifier_invocations": 1,
+        "sys_modules_unchanged": True,
+    }
+
+
+def run_stage_refusal_case(
+    base: Path,
+    name: str,
+    expected_code: str,
+    expected_stage: PreparationStage,
+    expected_classifier_invoked: bool,
+    *,
+    classifier_source: bytes | None = None,
+    invalidate_database_mode: bool = False,
+    forbidden_text: str,
+) -> dict[str, object]:
+    private_root, database, manifest_path, manifest_sha256, expected = setup_case(
+        base,
+        name,
+        "PASS",
+        classifier_source=classifier_source,
+    )
+    before = database_state(database)
+    if invalidate_database_mode:
+        database.chmod(0o400)
+    completed = subprocess.run(
+        command(private_root, database, manifest_path, manifest_sha256),
+        capture_output=True,
+        text=True,
+        env=environment(),
+    )
+    if invalidate_database_mode:
+        database.chmod(0o600)
+    refusal_path = expected["refusal_path"]
+    claim_path = expected["claim_path"]
+    if not isinstance(refusal_path, Path) or not isinstance(claim_path, Path):
+        raise RuntimeError("generated refusal identity path type differs")
+    refusal_bytes = refusal_path.read_bytes()
+    refusal = json.loads(refusal_bytes.decode("utf-8"))
+    expected_keys = {
+        "schema",
+        "operation",
+        "ok",
+        "state",
+        "failure_code",
+        "manifest_sha256",
+        "claim_identity_sha256",
+        "stage",
+        "classifier_invoked",
+    }
+    forbidden_values = {
+        forbidden_text,
+        str(database),
+        "https://www.linkedin.com/jobs/view/1234567890/",
+    }
+    public_projection = refusal_bytes.decode("utf-8") + completed.stderr
+    if (
+        completed.returncode != 2
+        or completed.stdout
+        or completed.stderr
+        != f"ClassificationPreparationError[{expected_code}]: preparation stopped\n"
+        or set(refusal) != expected_keys
+        or refusal["schema"] != REFUSAL_SCHEMA
+        or refusal["operation"] != MANIFEST_OPERATION
+        or refusal["ok"] is not False
+        or refusal["state"] != "preparation_refused"
+        or refusal["failure_code"] != expected_code
+        or refusal["manifest_sha256"] != manifest_sha256
+        or refusal["stage"] != expected_stage.value
+        or refusal["classifier_invoked"] is not expected_classifier_invoked
+        or any(value in public_projection for value in forbidden_values)
+        or claim_path.exists()
+        or canonical(refusal) != refusal_bytes
+        or database_state(database) != before
+    ):
+        raise RuntimeError(f"{name} refusal provenance differs")
+    return {
+        "case": name,
+        "database_read_only": True,
+        "failure_code": expected_code,
+        "stage": expected_stage.value,
+        "classifier_invoked": expected_classifier_invoked,
+        "private_error_text_absent": True,
     }
 
 
@@ -485,6 +674,7 @@ def run_spent_identity_case(base: Path, existing_outcome: str) -> dict[str, obje
         "outcome_bytes_unchanged": True,
         "classifier_invocations": 0,
         "database_read_only": True,
+        "legacy_refusal_recognized": existing_outcome == "refusal",
         "stdout_empty": True,
     }
 
@@ -498,7 +688,48 @@ def main() -> int:
             run_success_case(base, "success-pass", "PASS"),
             run_success_case(base, "success-killed", "KILLED"),
         ]
+        import_adapter = run_import_adapter_case()
         refusal = run_refusal_case(base)
+        stage_refusals = [
+            run_stage_refusal_case(
+                base,
+                "database-validate-refusal",
+                "PREPARATION_REFUSED",
+                PreparationStage.DATABASE_VALIDATE,
+                False,
+                invalidate_database_mode=True,
+                forbidden_text="owner-controlled 0600",
+            ),
+            run_stage_refusal_case(
+                base,
+                "classifier-load-refusal",
+                "PRIVATE_CLASSIFIER_INVALID",
+                PreparationStage.CLASSIFIER_LOAD,
+                False,
+                classifier_source=(
+                    b"FILTER_REV = 12\n"
+                    b"PRIVATE_VALUE = 'classifier load secret'\n"
+                    b"def classify(:\n"
+                ),
+                forbidden_text="classifier load secret",
+            ),
+            run_stage_refusal_case(
+                base,
+                "classifier-invoke-refusal",
+                "PREPARATION_REFUSED",
+                PreparationStage.CLASSIFIER_INVOKE,
+                True,
+                classifier_source=(
+                    b"import json\n"
+                    b"FILTER_REV = 12\n"
+                    b"def classify(job):\n"
+                    b"    from boards import PRIORITY_BOARDS\n"
+                    b"    json.dumps(PRIORITY_BOARDS)\n"
+                    b"    raise RuntimeError('classifier invocation secret')\n"
+                ),
+                forbidden_text="classifier invocation secret",
+            ),
+        ]
         spent_identities = [
             run_spent_identity_case(base, "claim"),
             run_spent_identity_case(base, "refusal"),
@@ -508,7 +739,9 @@ def main() -> int:
                 {
                     "schema": "taey_apply_classification_preparer_gate_v1",
                     "success": success,
+                    "import_adapter": import_adapter,
                     "refusal": refusal,
+                    "stage_refusals": stage_refusals,
                     "spent_identities": spent_identities,
                     "verdict": "PASS",
                 },
