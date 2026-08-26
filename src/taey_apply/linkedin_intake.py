@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import datetime as dt
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, Mapping
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 from . import __version__
 from .contract import (
@@ -108,14 +109,16 @@ _CAPTURE_COLUMNS = (
     "posted_raw",
     "posted_source",
 )
-_REQUIRED_JOB_COLUMNS = set(_CAPTURE_COLUMNS) | {
-    "first_seen",
-    "verdict",
-    "kill_reason",
-    "detail",
-    "applied_at",
-    "score",
+_REQUIRED_JOB_COLUMN_TYPES = {
+    **{column: "TEXT" for column in _CAPTURE_COLUMNS},
+    "first_seen": "TEXT",
+    "verdict": "TEXT",
+    "kill_reason": "TEXT",
+    "detail": "TEXT",
+    "applied_at": "TEXT",
+    "score": "INTEGER",
 }
+_JOB_ID_RE = re.compile(r"[1-9][0-9]{0,19}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +143,7 @@ class LinkedInCapture:
 class DatabaseWrite:
     verdict: str
     records_written: int
+    jobs_match_count: int
     row_digest: str
     verdict_is_null: bool
     score_is_null: bool
@@ -177,7 +181,14 @@ def _exact_int(value: object, context: str, *, minimum: int = 0) -> int:
     return value
 
 
-def _validate_lock(value: object, context: str) -> None:
+def _validate_lock(
+    value: object,
+    context: str,
+    *,
+    turn_lineage_sha256: str,
+    correlation_id_sha256: str,
+    deadline_seconds: int,
+) -> None:
     lock = _mapping(value, context)
     _expect_keys(lock, _LOCK_KEYS, context)
     if (
@@ -188,13 +199,28 @@ def _validate_lock(value: object, context: str) -> None:
         raise IntakeContractError(
             "source_receipt_invalid", f"{context} is not positively released"
         )
-    for key in ("request_id", "turn_lineage_sha256", "correlation_id_sha256"):
-        validate_digest(lock[key], f"{context} {key}")
+    validate_digest(lock["request_id"], f"{context} request ID")
+    lock_lineage = validate_digest(
+        lock["turn_lineage_sha256"], f"{context} turn lineage"
+    )
+    lock_correlation = validate_digest(
+        lock["correlation_id_sha256"], f"{context} correlation"
+    )
     owner_digest = lock["owner_token_sha256"]
     if owner_digest is not None:
         validate_digest(owner_digest, f"{context} owner token")
     _exact_int(lock["wait_ms"], f"{context} wait")
-    _exact_int(lock["deadline_seconds"], f"{context} deadline", minimum=1)
+    lock_deadline = _exact_int(
+        lock["deadline_seconds"], f"{context} deadline", minimum=1
+    )
+    if (
+        lock_lineage != turn_lineage_sha256
+        or lock_correlation != correlation_id_sha256
+        or lock_deadline != deadline_seconds
+    ):
+        raise IntakeContractError(
+            "source_receipt_invalid", f"{context} lineage differs"
+        )
 
 
 def _match_counts(value: object, context: str) -> Mapping[str, Any]:
@@ -233,15 +259,22 @@ def _validate_search_receipt(
         )
     validate_digest(receipt["search_ref_sha256"], "search reference")
     validate_digest(receipt["sink_ref_sha256"], "search sink")
-    validate_digest(receipt["turn_lineage_sha256"], "search lineage")
-    validate_digest(receipt["correlation_id_sha256"], "search correlation")
-    _exact_int(receipt["deadline_seconds"], "search deadline", minimum=1)
-    if (
-        _exact_int(receipt["stable_cycles_observed"], "search stable cycles", minimum=1)
-        < 1
-    ):
-        raise IntakeContractError("source_receipt_invalid", "search did not stabilize")
-    _validate_lock(receipt["lock"], "search lock")
+    lineage = validate_digest(receipt["turn_lineage_sha256"], "search lineage")
+    correlation = validate_digest(
+        receipt["correlation_id_sha256"], "search correlation"
+    )
+    deadline = _exact_int(receipt["deadline_seconds"], "search deadline", minimum=1)
+    if _exact_int(receipt["stable_cycles_observed"], "search stable cycles") != 2:
+        raise IntakeContractError(
+            "source_receipt_invalid", "search stabilization is not exact"
+        )
+    _validate_lock(
+        receipt["lock"],
+        "search lock",
+        turn_lineage_sha256=lineage,
+        correlation_id_sha256=correlation,
+        deadline_seconds=deadline,
+    )
     pre_counts = _match_counts(receipt["pre_match_counts"], "search pre counts")
     if (
         pre_counts["valid_cards"] != artifact_card_count
@@ -378,15 +411,20 @@ def _validate_selected_receipt(
         raise IntakeContractError(
             "source_receipt_invalid", "selected transaction claim differs"
         )
-    for key in (
-        "search_ref_sha256",
-        "sink_ref_sha256",
-        "turn_lineage_sha256",
-        "correlation_id_sha256",
-    ):
+    for key in ("search_ref_sha256", "sink_ref_sha256"):
         validate_digest(receipt[key], f"selected {key}")
-    _exact_int(receipt["deadline_seconds"], "selected deadline", minimum=1)
-    _validate_lock(receipt["lock"], "selected lock")
+    lineage = validate_digest(receipt["turn_lineage_sha256"], "selected lineage")
+    correlation = validate_digest(
+        receipt["correlation_id_sha256"], "selected correlation"
+    )
+    deadline = _exact_int(receipt["deadline_seconds"], "selected deadline", minimum=1)
+    _validate_lock(
+        receipt["lock"],
+        "selected lock",
+        turn_lineage_sha256=lineage,
+        correlation_id_sha256=correlation,
+        deadline_seconds=deadline,
+    )
     if receipt["pre_observation_sha256"] != artifact_sha256:
         raise IntakeContractError(
             "source_receipt_invalid", "selected pre-observation differs"
@@ -429,10 +467,8 @@ def _validate_selected_receipt(
         or selection["target_match_count"] != 1
         or selection["detail_title_match_count"] != 1
         or selection["detail_company_match_count"] != 1
-        or _exact_int(
-            selection["stable_cycles_observed"], "selection stable cycles", minimum=1
-        )
-        < 1
+        or _exact_int(selection["stable_cycles_observed"], "selection stable cycles")
+        != 2
         or selection["action_name"] != "click"
         or selection["action_index"] != 0
         or selection["action_match_count"] != 1
@@ -482,10 +518,7 @@ def _validate_search_results_url(value: object, *, require_job_id: bool) -> str 
     normalized_path = parsed.path.rstrip("/") or "/"
     if (
         parsed.scheme != "https"
-        or parsed.hostname != "www.linkedin.com"
-        or parsed.port is not None
-        or parsed.username is not None
-        or parsed.password is not None
+        or parsed.netloc != "www.linkedin.com"
         or normalized_path != "/jobs/search-results"
         or parsed.fragment
     ):
@@ -494,8 +527,13 @@ def _validate_search_results_url(value: object, *, require_job_id: bool) -> str 
         )
     if not require_job_id:
         return None
-    values = parse_qs(parsed.query, keep_blank_values=True).get("currentJobId", [])
-    if len(values) != 1 or not values[0].isdigit() or not 1 <= len(values[0]) <= 20:
+    values = [
+        raw_value
+        for component in parsed.query.split("&")
+        for key, separator, raw_value in (component.partition("="),)
+        if separator and key == "currentJobId"
+    ]
+    if len(values) != 1 or _JOB_ID_RE.fullmatch(values[0]) is None:
         raise IntakeContractError(
             "pair_mismatch", "selected capture has no exact current job identity"
         )
@@ -629,6 +667,42 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
 
 
+def _validate_jobs_table(connection: sqlite3.Connection) -> None:
+    table_info = connection.execute("PRAGMA table_info(jobs)").fetchall()
+    columns = {str(row[1]): str(row[2]).strip().upper() for row in table_info}
+    if any(
+        columns.get(column) != expected_type
+        for column, expected_type in _REQUIRED_JOB_COLUMN_TYPES.items()
+    ):
+        raise IntakeContractError(
+            "database_contract_invalid", "jobs table column contract is incomplete"
+        )
+    primary_key_columns = [
+        str(row[1])
+        for row in sorted(table_info, key=lambda row: int(row[5]))
+        if int(row[5]) > 0
+    ]
+    url_is_unique = primary_key_columns == ["url"]
+    if not url_is_unique:
+        for index in connection.execute("PRAGMA index_list(jobs)").fetchall():
+            if int(index[2]) != 1 or (len(index) > 4 and int(index[4]) == 1):
+                continue
+            index_columns = [
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM pragma_index_info(?) ORDER BY seqno",
+                    (str(index[1]),),
+                )
+            ]
+            if index_columns == ["url"]:
+                url_is_unique = True
+                break
+    if not url_is_unique:
+        raise IntakeContractError(
+            "database_contract_invalid", "jobs URL identity is not unique"
+        )
+
+
 def _capture_values(capture: LinkedInCapture) -> tuple[Any, ...]:
     return (
         capture.canonical_url,
@@ -654,10 +728,8 @@ def persist_capture(database: Path, capture: LinkedInCapture) -> DatabaseWrite:
     connection = sqlite3.connect(str(database), timeout=30, isolation_level=None)
     try:
         connection.execute("PRAGMA foreign_keys=ON")
-        if not _REQUIRED_JOB_COLUMNS.issubset(_table_columns(connection, "jobs")):
-            raise IntakeContractError(
-                "database_contract_invalid", "jobs table contract is incomplete"
-            )
+        connection.execute("BEGIN IMMEDIATE")
+        _validate_jobs_table(connection)
         for table in ("applications", "apply_runs"):
             if not _table_columns(connection, table):
                 raise IntakeContractError(
@@ -676,40 +748,37 @@ def persist_capture(database: Path, capture: LinkedInCapture) -> DatabaseWrite:
         apply_runs_before = int(
             connection.execute("SELECT COUNT(*) FROM apply_runs").fetchone()[0]
         )
-        connection.execute("BEGIN IMMEDIATE")
-        existing = connection.execute(
-            "SELECT url,source,company,title,location,workplace,description,posted,posted_raw,posted_source,"
-            "verdict,score,applied_at FROM jobs WHERE url=?",
-            (capture.canonical_url,),
-        ).fetchone()
         expected_values = _capture_values(capture)
-        if existing is None:
-            first_seen = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-            connection.execute(
-                "INSERT INTO jobs(url,source,company,title,location,workplace,description,posted,posted_raw,"
-                "posted_source,first_seen,verdict,kill_reason,detail,applied_at,score) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,NULL,NULL)",
-                (*expected_values, first_seen),
+        first_seen = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        connection.execute(
+            "INSERT OR IGNORE INTO jobs(url,source,company,title,location,workplace,description,posted,posted_raw,"
+            "posted_source,first_seen,verdict,kill_reason,detail,applied_at,score) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,NULL,NULL)",
+            (*expected_values, first_seen),
+        )
+        records_written = int(connection.execute("SELECT changes()").fetchone()[0])
+        if records_written not in {0, 1}:
+            raise IntakeContractError(
+                "database_write_indeterminate", "database effect count is invalid"
             )
-            records_written = 1
-        else:
-            if tuple(existing[: len(_CAPTURE_COLUMNS)]) != expected_values:
-                raise IntakeContractError(
-                    "existing_row_conflict", "existing job row differs from capture"
-                )
-            records_written = 0
-        after_row = connection.execute(
+        matching_rows = connection.execute(
             "SELECT url,source,company,title,location,workplace,description,posted,posted_raw,posted_source,"
             "verdict,score,applied_at FROM jobs WHERE url=?",
             (capture.canonical_url,),
-        ).fetchone()
-        if (
-            after_row is None
-            or tuple(after_row[: len(_CAPTURE_COLUMNS)]) != expected_values
-        ):
+        ).fetchall()
+        jobs_match_count = len(matching_rows)
+        if jobs_match_count != 1:
             raise IntakeContractError(
-                "database_write_indeterminate", "job row postcondition failed"
+                "database_write_indeterminate", "job URL identity is not exact"
             )
+        after_row = matching_rows[0]
+        if tuple(after_row[: len(_CAPTURE_COLUMNS)]) != expected_values:
+            failure_code = (
+                "existing_row_conflict"
+                if records_written == 0
+                else "database_write_indeterminate"
+            )
+            raise IntakeContractError(failure_code, "job row differs from capture")
         applications_after = int(
             connection.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
         )
@@ -724,7 +793,6 @@ def persist_capture(database: Path, capture: LinkedInCapture) -> DatabaseWrite:
                 "database_write_indeterminate",
                 "application state changed during intake",
             )
-        connection.execute("COMMIT")
         verdict_is_null = after_row[-3] is None
         score_is_null = after_row[-2] is None
         applied_at_is_null = after_row[-1] is None
@@ -734,9 +802,11 @@ def persist_capture(database: Path, capture: LinkedInCapture) -> DatabaseWrite:
             raise IntakeContractError(
                 "database_write_indeterminate", "new intake row is not unclassified"
             )
+        connection.execute("COMMIT")
         return DatabaseWrite(
             verdict="written" if records_written else "already_present",
             records_written=records_written,
+            jobs_match_count=jobs_match_count,
             row_digest=_row_digest(tuple(after_row[: len(_CAPTURE_COLUMNS)])),
             verdict_is_null=verdict_is_null,
             score_is_null=score_is_null,
@@ -809,7 +879,7 @@ def finalize_success(
         "postcondition": {
             "kind": "exact_capture_row_present",
             "verdict": "satisfied",
-            "jobs_match_count": 1,
+            "jobs_match_count": write.jobs_match_count,
             "verdict_is_null": write.verdict_is_null,
             "score_is_null": write.score_is_null,
             "applied_at_is_null": write.applied_at_is_null,

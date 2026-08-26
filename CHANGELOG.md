@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Require an exact `TEXT` URL primary key or single-column unique identity before intake.
+- Derive the write count from SQLite and observe exactly one matching URL row before success.
+- Reject noncanonical job IDs and source receipts with fewer than two required stable cycles.
+- Add adversarial coverage for identity, pairing, lineage, digest, stabilization, and conflict failures.
+
 ## 0.1.0
 
 - Add the deterministic LinkedIn capture-to-unclassified-intake connector.

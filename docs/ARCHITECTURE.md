@@ -20,9 +20,9 @@
 4. Require one card digest and bind its target/title/company hashes to the selected-job receipt.
 5. Require one shared search reference.
 6. Parse exactly one numeric `currentJobId` from the selected capture URL and normalize it to `https://www.linkedin.com/jobs/view/ID/`.
-7. Require the existing private database schema and absence of write triggers on `jobs`.
-8. Execute one `INSERT OR IGNORE`. A collision is accepted only when the stored capture fields match exactly.
-9. Verify the row and prove that application-state table counts did not change.
+7. Require the live-compatible declared column types, a `TEXT` URL sole primary key or single-column unique identity, and absence of write triggers on `jobs`.
+8. Execute one `INSERT OR IGNORE` and derive `records_written` from SQLite's observed effect.
+9. Select every exact URL match, require exactly one, compare all capture fields, and prove that application-state table counts did not change.
 10. Commit, write one immutable private receipt, and emit a compact public result.
 
 ## Scoring boundary
@@ -31,4 +31,4 @@ New rows have `verdict`, `score`, and `applied_at` set to SQL `NULL`. A scorer t
 
 ## Failure model
 
-Every zero/duplicate match, digest mismatch, receipt mismatch, unsafe path, unexpected database schema, write trigger, stored-row conflict, or database error stops the call. There are no alternate selectors, schema coercions, retries, updates, deletes, or fallbacks.
+Every zero/duplicate match, noncanonical job identity, digest mismatch, receipt mismatch, unsafe path, unexpected database schema, write trigger, stored-row conflict, or database error stops the call. There are no alternate selectors, schema coercions, retries, updates, deletes, or fallbacks.
