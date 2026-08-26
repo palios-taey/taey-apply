@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/linkedin-classification-receipt-v1.json",
+  "title": "Immutable privacy-safe LinkedIn classification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_linkedin_classification_receipt_v1"},
+    "operation": {"const": "classify_frozen_linkedin_intake"},
+    "connector_version": {"const": "0.1.1"},
+    "requester": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "turn_lineage_sha256": {"$ref": "#/$defs/digest"},
+    "correlation_id_sha256": {"$ref": "#/$defs/digest"},
+    "transaction_sha256": {"$ref": "#/$defs/digest"},
+    "state": {"const": "classified"},
+    "ok": {"const": true},
+    "failure_code": {"type": "null"},
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intake_transaction_sha256": {"$ref": "#/$defs/digest"},
+        "intake_receipt_sha256": {"$ref": "#/$defs/digest"},
+        "job_identity_sha256": {"$ref": "#/$defs/digest"},
+        "intake_row_sha256": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["intake_transaction_sha256", "intake_receipt_sha256", "job_identity_sha256", "intake_row_sha256"]
+    },
+    "decision_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attempt_sha256": {"$ref": "#/$defs/digest"},
+        "policy_input_sha256": {"$ref": "#/$defs/digest"},
+        "classifier_sha256": {"$ref": "#/$defs/digest"},
+        "prewrite_row_sha256": {"$ref": "#/$defs/digest"},
+        "stable_row_sha256": {"$ref": "#/$defs/digest"}
+      },
+      "required": ["attempt_sha256", "policy_input_sha256", "classifier_sha256", "prewrite_row_sha256", "stable_row_sha256"]
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "sqlite_update_once"},
+        "records_observed": {"const": 1},
+        "records_written": {"const": 1},
+        "changed_columns": {"const": ["verdict"]}
+      },
+      "required": ["kind", "records_observed", "records_written", "changed_columns"]
+    },
+    "postcondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "exact_terminal_classification_present"},
+        "verdict": {"const": "satisfied"},
+        "jobs_before": {"type": "integer", "minimum": 0},
+        "jobs_after": {"type": "integer", "minimum": 0},
+        "applications_before": {"type": "integer", "minimum": 0},
+        "applications_after": {"type": "integer", "minimum": 0},
+        "apply_runs_before": {"type": "integer", "minimum": 0},
+        "apply_runs_after": {"type": "integer", "minimum": 0},
+        "stable_row_sha256": {"$ref": "#/$defs/digest"},
+        "postwrite_row_sha256": {"$ref": "#/$defs/digest"},
+        "score_is_null": {"const": true},
+        "applied_at_is_null": {"const": true},
+        "terminal": {"const": true}
+      },
+      "required": [
+        "kind", "verdict", "jobs_before", "jobs_after", "applications_before",
+        "applications_after", "apply_runs_before", "apply_runs_after",
+        "stable_row_sha256", "postwrite_row_sha256", "score_is_null",
+        "applied_at_is_null", "terminal"
+      ]
+    }
+  },
+  "required": [
+    "schema", "operation", "connector_version", "requester",
+    "turn_lineage_sha256", "correlation_id_sha256", "transaction_sha256",
+    "state", "ok", "failure_code", "upstream", "decision_binding", "action",
+    "postcondition"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

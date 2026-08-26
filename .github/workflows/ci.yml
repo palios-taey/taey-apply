@@ -25,10 +25,13 @@ jobs:
           python3 -c "import taey_apply; print(taey_apply.__version__)"
           taey-prepare-linkedin-intake --help
           taey-linkedin-intake --help
+          taey-linkedin-classification --help
       - name: Transaction preparer gate
         run: python3 tools/validate_preparer.py
       - name: Contract gate
         run: python3 tools/validate_contract.py
+      - name: Classification contract gate
+        run: python3 tools/validate_classification.py
       - name: Build wheel
         run: python3 -m pip wheel . --no-deps --wheel-dir dist
       - name: Secret scan

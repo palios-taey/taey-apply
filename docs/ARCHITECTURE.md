@@ -34,8 +34,20 @@ Any draft, pairing, or readback refusal after reservation creates an immutable `
 
 ## Scoring boundary
 
-New rows have `verdict`, `score`, and `applied_at` set to SQL `NULL`. A scorer that claims only explicit `PASS` rows cannot see them. Classification is a separate future transaction because it depends on user policy; folding it into intake would silently expand authority.
+New rows have `verdict`, `score`, and `applied_at` set to SQL `NULL`. A scorer that claims only explicit `PASS` rows cannot see them. Classification remains a separate transaction because it depends on user policy; folding it into intake would silently expand authority.
+
+## Classification commit boundary
+
+The private parent evaluates its existing personal policy outside this public process and freezes one owner-controlled `0400` claim. The claim binds the exact qualified intake transaction and receipt digests, the complete prewrite row digest, the stable row digest, the private policy/input digest, the private classifier digest, and one terminal `PASS` or `KILLED` decision.
+
+The public connector reconstructs the canonical URL only from the existing intake transaction and its four source artifacts. It validates the complete upstream intake receipt against that reconstruction and never accepts a raw URL or job identity on the command line. A fixed `classification-attempts/TRANSACTION_SHA.json` reservation makes an accepted claim protocol-nonreplayable before database mutation.
+
+Inside `BEGIN IMMEDIATE`, the connector requires one exact URL row with `verdict`, `score`, and `applied_at` all SQL `NULL`; verifies complete and stable row digests; updates only `verdict`; and proves that the `jobs`, `applications`, and `apply_runs` counts and every non-verdict target column remain unchanged. A committed readback precedes receipt publication. The compact result omits the terminal decision, job identity, and policy/classifier digests. The immutable receipt contains digests and counts but no raw private values.
+
+The connector does not validate the semantic correctness of the parent-owned policy decision. It validates only the immutable decision binding and its exact one-row persistence.
+
+Cross-resource states are not described as atomic. A database commit that cannot be proven is `WRITE_INDETERMINATE`; a committed row that cannot be proven is `SIDE_EFFECT_UNCERTAIN`; and a proven commit whose receipt cannot be proven is `RECEIPT_INDETERMINATE`. All are terminal and grant no retry.
 
 ## Failure model
 
-Every zero/duplicate match, noncanonical job identity, digest mismatch, receipt mismatch, unsafe path, unexpected database schema, write trigger, stored-row conflict, or database error stops the call. There are no alternate selectors, schema coercions, retries, updates, deletes, or fallbacks.
+Every zero/duplicate match, noncanonical job identity, digest mismatch, receipt mismatch, unsafe path, unexpected database schema, write trigger, stored-row conflict, replay, or database error stops the call. There are no alternate selectors, schema coercions, automatic retries, deletes, or fallbacks. The only classification update is the exact single-column transition described above.

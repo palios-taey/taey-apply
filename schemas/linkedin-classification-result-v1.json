@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/linkedin-classification-result-v1.json",
+  "title": "Compact LinkedIn classification result",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_linkedin_classification_result_v1"},
+    "operation": {"const": "classify_frozen_linkedin_intake"},
+    "ok": {"const": true},
+    "state": {"const": "classified"},
+    "failure_code": {"type": "null"},
+    "records_observed": {"const": 1},
+    "records_written": {"const": 1},
+    "transaction_sha256": {"$ref": "#/$defs/digest"},
+    "receipt_sha256": {"$ref": "#/$defs/digest"},
+    "turn_lineage_sha256": {"$ref": "#/$defs/digest"},
+    "terminal": {"const": true}
+  },
+  "required": [
+    "schema", "operation", "ok", "state", "failure_code", "records_observed",
+    "records_written", "transaction_sha256", "receipt_sha256",
+    "turn_lineage_sha256", "terminal"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
