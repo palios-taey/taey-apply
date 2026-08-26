@@ -20,6 +20,7 @@ dependencies = []
 [project.scripts]
 taey-linkedin-intake = "taey_apply.cli:main"
 taey-prepare-linkedin-intake = "taey_apply.prepare_cli:main"
+taey-prepare-linkedin-classification = "taey_apply.classification_prepare_cli:main"
 taey-linkedin-classification = "taey_apply.classification_cli:main"
 
 [tool.setuptools]

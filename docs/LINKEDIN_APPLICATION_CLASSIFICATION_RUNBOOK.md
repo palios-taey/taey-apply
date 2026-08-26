@@ -4,24 +4,40 @@ This is the public mechanical contract for committing one private-parent classif
 
 ## Parent-owned preparation
 
-The private parent, outside this repository:
+The private parent creates one canonical owner-controlled `0400` manifest matching `schemas/linkedin-classification-preparation-manifest-v1.json`. It binds the exact qualified intake transaction and receipt refs/hashes, private policy artifact ref/hash, private classifier ref/hash, private priority-board artifact ref/hash, and distinct fresh claim/refusal refs. Claims live under `classification/`; refusal markers live under the disjoint `classification-preparation-refusals/` namespace. The private root and every output parent are owner-controlled `0700`; the database is owner-controlled `0600`; every manifest-bound input is owner-controlled `0400`.
+
+Invoke the public parent-only preparer once:
+
+```bash
+PYTHONPATH="$TAEY_APPLY_PUBLIC_ROOT/src" \
+  "$TAEY_APPLY_PYTHON" -P -m taey_apply.classification_prepare_cli \
+  --private-root "$TAEY_APPLY_PRIVATE_ROOT" \
+  --database "$TAEY_APPLY_DATABASE" \
+  --manifest-file "$TAEY_APPLY_CLASSIFICATION_MANIFEST" \
+  --expected-manifest-sha256 "$TAEY_APPLY_CLASSIFICATION_MANIFEST_SHA256"
+```
+
+The preparer mechanically:
 
 1. selects one row bound to one qualified intake receipt;
-2. reads the row and its private inputs without mutation;
-3. invokes the existing private classifier exactly once;
+2. opens SQLite in read-only mode, enables `query_only`, and requires one exact pristine row with `verdict`, `kill_reason`, `detail`, `score`, and `applied_at` all SQL `NULL`;
+3. reads and verifies the pinned private artifacts and invokes the exact classifier bytes once;
 4. accepts only exact `PASS` or `KILLED`;
-5. computes the complete prewrite row digest, stable non-verdict row digest, combined policy/input digest, and classifier-source digest;
-6. writes one canonical owner-controlled `0400` claim matching `schemas/linkedin-classification-private-claim-v1.json`;
-7. freezes its expected SHA-256 and invokes the connector once.
+5. computes the complete prewrite row digest and stable non-verdict row digest using the connector's existing functions;
+6. computes `policy_input_sha256` over schema `taey_private_classification_policy_input_v1`, classifier SHA-256, exact `FILTER_REV`, the digestable complete row, and the canonical priority-board-list SHA-256;
+7. writes one canonical owner-controlled `0400` claim matching the existing `schemas/linkedin-classification-private-claim-v1.json` with `O_EXCL|O_NOFOLLOW`, fsync, and exact readback;
+8. requalifies the intake and reobserves the unchanged pristine row before returning only fixed state plus digests.
 
-No raw job value, URL, policy rule, threshold, classifier source, or verdict enters Taey's request or the command line. The claim is private data. The public connector does not claim that it re-evaluated the private policy.
+A failure after claim/refusal identity acceptance and before claim publication writes the distinct immutable `0400` refusal marker. Existing claim or refusal identity is terminal. If claim publication becomes indeterminate, preserve it for reconciliation; never create a substitute claim or retry. Successful preparation creates no classification-attempt marker. That marker remains commit-owned by `classification_contract.py` and is created only by the one connector call below.
+
+No raw job value, URL, policy rule, threshold, classifier source, or verdict enters Taey's request, the command line, or preparer stdout. The manifest and claim are private data. The public commit connector does not re-evaluate the private policy.
 
 ## Required private state
 
 - The exact reviewed public checkout and explicit Python interpreter are pinned by the parent.
 - The private root is a nonsymlink owner-controlled `0700` directory.
 - The database is an existing nonsymlink owner-controlled `0600` file.
-- The frozen claim, intake transaction, intake receipt, and four source files are owner-controlled `0400` files beneath the private root.
+- The frozen manifest, policy artifact, classifier, priority-board artifact, claim, intake transaction, intake receipt, and four source files are owner-controlled `0400` files beneath the private root.
 - `classification-attempts` and the receipt parent are owner-controlled nonsymlink `0700` directories beneath the private root.
 - The intake receipt digest equals the claim's exact digest and validates as a successful unclassified intake with all three NULL postconditions.
 - The scorer remains inactive. No service is started, stopped, or restarted for this transaction.

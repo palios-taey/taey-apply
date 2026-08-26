@@ -7,6 +7,7 @@
 | Parent runtime | Seat/correlation lineage, private paths, single-use claim, frozen card choice |
 | Capture producer | Exact UI observation/action receipts and immutable private artifacts |
 | Transaction preparer | Validate an owner-private draft and exact source pairing, then create one canonical unclaimed identity |
+| Classification claim preparer | Validate one manifest-bound private policy decision against one pristine qualified row and publish one existing-schema claim or refusal |
 | `taey-apply` | Validate the paired evidence, derive canonical identity, deduplicate, persist unclassified intake, return a compact receipt |
 | Later policy stage | Decide `PASS` or `KILLED` and authorize scoring |
 | Later application stage | Any ATS or application action under its own authority |
@@ -38,7 +39,11 @@ New rows have `verdict`, `score`, and `applied_at` set to SQL `NULL`. A scorer t
 
 ## Classification commit boundary
 
-The private parent evaluates its existing personal policy outside this public process and freezes one owner-controlled `0400` claim. The claim binds the exact qualified intake transaction and receipt digests, the complete prewrite row digest, the stable row digest, the private policy/input digest, the private classifier digest, and one terminal `PASS` or `KILLED` decision.
+The parent-only classification preparer removes hand construction without widening Taey's authority. One canonical `0400` manifest pins the qualified intake refs/hashes, private policy artifact, exact classifier bytes, canonical priority-board artifact, and fresh claim/refusal identities. The preparer opens the `0600` database read-only with `query_only`, reuses the existing qualified-intake and row-digest functions, requires one exact pristine row, computes the exact policy-input algebra, and invokes the classifier once. Only `PASS` or `KILLED` can enter the existing claim schema. Claim publication is exclusive, immutable, fsynced, and read back; successful preparation does not reserve the commit attempt.
+
+A failure after output-identity acceptance publishes only the distinct immutable refusal marker unless a claim publication already exists or is indeterminate. The preparer performs no database mutation, scorer activation, UI, ATS, application, message, or outward action and is not exposed as a model-facing tool.
+
+The private parent owns, reviews, and pins its existing personal policy outside this repository. The parent-only preparer invokes those exact bytes and freezes one owner-controlled `0400` claim. The claim binds the exact qualified intake transaction and receipt digests, the complete prewrite row digest, the stable row digest, the private policy/input digest, the private classifier digest, and one terminal `PASS` or `KILLED` decision.
 
 The public connector reconstructs the canonical URL only from the existing intake transaction and its four source artifacts. It validates the complete upstream intake receipt against that reconstruction and never accepts a raw URL or job identity on the command line. A fixed `classification-attempts/TRANSACTION_SHA.json` reservation makes an accepted claim protocol-nonreplayable before database mutation.
 

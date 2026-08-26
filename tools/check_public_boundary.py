@@ -59,9 +59,12 @@ REQUIRED_FILES = {
     "schemas/linkedin-intake-receipt-v1.json",
     "schemas/linkedin-intake-result-v1.json",
     "schemas/linkedin-classification-private-claim-v1.json",
+    "schemas/linkedin-classification-preparation-manifest-v1.json",
     "schemas/linkedin-classification-receipt-v1.json",
     "schemas/linkedin-classification-result-v1.json",
     "src/taey_apply/classification_cli.py",
+    "src/taey_apply/classification_prepare_cli.py",
+    "src/taey_apply/classification_preparer.py",
     "src/taey_apply/classification_contract.py",
     "src/taey_apply/cli.py",
     "src/taey_apply/contract.py",
@@ -71,6 +74,7 @@ REQUIRED_FILES = {
     "src/taey_apply/preparer.py",
     "tools/validate_preparer.py",
     "tools/validate_classification.py",
+    "tools/validate_classification_preparer.py",
 }
 
 

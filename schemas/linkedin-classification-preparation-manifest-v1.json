@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/linkedin-classification-preparation-manifest-v1.json",
+  "title": "Private LinkedIn classification claim preparation manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_linkedin_classification_preparation_manifest_v1"},
+    "operation": {"const": "prepare_frozen_linkedin_classification_claim"},
+    "intake_transaction_ref": {"$ref": "#/$defs/private_ref"},
+    "intake_transaction_sha256": {"$ref": "#/$defs/digest"},
+    "intake_receipt_ref": {"$ref": "#/$defs/private_ref"},
+    "intake_receipt_sha256": {"$ref": "#/$defs/digest"},
+    "policy_artifact_ref": {"$ref": "#/$defs/private_ref"},
+    "policy_artifact_sha256": {"$ref": "#/$defs/digest"},
+    "classifier_ref": {"$ref": "#/$defs/private_ref"},
+    "classifier_sha256": {"$ref": "#/$defs/digest"},
+    "priority_boards_artifact_ref": {"$ref": "#/$defs/private_ref"},
+    "priority_boards_artifact_sha256": {"$ref": "#/$defs/digest"},
+    "claim_ref": {"$ref": "#/$defs/claim_ref"},
+    "refusal_ref": {"$ref": "#/$defs/refusal_ref"}
+  },
+  "required": [
+    "schema",
+    "operation",
+    "intake_transaction_ref",
+    "intake_transaction_sha256",
+    "intake_receipt_ref",
+    "intake_receipt_sha256",
+    "policy_artifact_ref",
+    "policy_artifact_sha256",
+    "classifier_ref",
+    "classifier_sha256",
+    "priority_boards_artifact_ref",
+    "priority_boards_artifact_sha256",
+    "claim_ref",
+    "refusal_ref"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "private_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*//)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "claim_ref": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 4096,
+      "pattern": "^classification/(?!.*(?:^|/)\\.\\.?/)(?!.*//)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "refusal_ref": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 4096,
+      "pattern": "^classification-preparation-refusals/(?!.*(?:^|/)\\.\\.?/)(?!.*//)[^\\u0000-\\u001f\\u007f]+$"
+    }
+  }
+}
