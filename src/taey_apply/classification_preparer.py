@@ -287,6 +287,10 @@ def _accept_identity(
             "classification preparation refusal",
             must_exist=False,
         )
+        if _path_exists(claim_path) or _path_exists(refusal_path):
+            raise ClassificationPreparationError(
+                "IDENTITY_SPENT", "preparation identity already has an outcome"
+            )
         claim_path = validate_new_receipt_path(claim_path, private_root)
         refusal_path = validate_new_receipt_path(refusal_path, private_root)
     except IntakeContractError as exc:
@@ -306,6 +310,10 @@ def _accept_identity(
             "RUNTIME_CONTRACT_INVALID", "classification attempts are unavailable"
         ) from exc
     _validate_directory(attempts_path, "classification attempts")
+    if _path_exists(claim_path) or _path_exists(refusal_path):
+        raise ClassificationPreparationError(
+            "IDENTITY_SPENT", "preparation identity already has an outcome"
+        )
     return PreparationIdentity(
         private_root=private_root,
         manifest=manifest,

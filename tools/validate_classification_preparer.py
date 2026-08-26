@@ -121,6 +121,8 @@ def setup_case(
     base: Path,
     name: str,
     classifier_verdict: str,
+    *,
+    track_invocation: bool = False,
 ) -> tuple[Path, Path, Path, str, dict[str, object]]:
     private_root = base / name / "private"
     database_root = base / name / "database"
@@ -157,6 +159,13 @@ def setup_case(
         "schema": PRIORITY_BOARDS_SCHEMA,
         "priority_boards": priority_boards,
     }
+    invocation_marker = identity_root / "classifier-invoked"
+    invocation_line = (
+        "    from pathlib import Path\n"
+        f"    Path({str(invocation_marker)!r}).write_bytes(b'1')\n"
+        if track_invocation
+        else ""
+    )
     classifier_source = (
         "FILTER_REV = 12\n"
         "_invocations = 0\n"
@@ -165,7 +174,8 @@ def setup_case(
         "    _invocations += 1\n"
         "    if _invocations != 1:\n"
         "        raise RuntimeError('classifier invoked more than once')\n"
-        f"    return ({classifier_verdict!r}, 'private reason', 'private detail')\n"
+        + invocation_line
+        + f"    return ({classifier_verdict!r}, 'private reason', 'private detail')\n"
     ).encode("utf-8")
     policy_path = identity_root / "policy.json"
     priority_path = identity_root / "priority-boards.json"
@@ -213,6 +223,7 @@ def setup_case(
         "claim_path": private_root / claim_ref,
         "refusal_path": private_root / refusal_ref,
         "filter_rev": 12,
+        "invocation_marker": invocation_marker,
     }
     return private_root, database, manifest_path, manifest_sha256, expected
 
@@ -329,7 +340,7 @@ def run_success_case(
         replay.returncode != 2
         or replay.stdout
         or replay.stderr
-        != "ClassificationPreparationError[IDENTITY_INVALID]: preparation stopped\n"
+        != "ClassificationPreparationError[IDENTITY_SPENT]: preparation stopped\n"
         or database_state(database) != before
         or refusal_path.exists()
     ):
@@ -389,7 +400,7 @@ def run_refusal_case(base: Path) -> dict[str, object]:
         replay.returncode != 2
         or replay.stdout
         or replay.stderr
-        != "ClassificationPreparationError[IDENTITY_INVALID]: preparation stopped\n"
+        != "ClassificationPreparationError[IDENTITY_SPENT]: preparation stopped\n"
         or database_state(database) != before
     ):
         raise RuntimeError("refused preparation identity was replayable")
@@ -398,6 +409,83 @@ def run_refusal_case(base: Path) -> dict[str, object]:
         "database_read_only": True,
         "refusal_canonical_0400": True,
         "replay_refused": True,
+    }
+
+
+def run_spent_identity_case(base: Path, existing_outcome: str) -> dict[str, object]:
+    private_root, database, manifest_path, manifest_sha256, expected = setup_case(
+        base,
+        f"spent-{existing_outcome}",
+        "PASS",
+        track_invocation=True,
+    )
+    claim_path = expected["claim_path"]
+    refusal_path = expected["refusal_path"]
+    invocation_marker = expected["invocation_marker"]
+    if (
+        not isinstance(claim_path, Path)
+        or not isinstance(refusal_path, Path)
+        or not isinstance(invocation_marker, Path)
+    ):
+        raise RuntimeError("generated spent identity path type differs")
+    if existing_outcome == "claim":
+        existing_path = claim_path
+        counterpart = refusal_path
+        existing_value = {
+            "schema": CLAIM_SCHEMA,
+            "operation": OPERATION,
+            "intake_transaction_ref": "transactions/seat/intake.json",
+            "intake_transaction_sha256": "1" * 64,
+            "intake_receipt_ref": "receipts/seat/intake.json",
+            "intake_receipt_sha256": "2" * 64,
+            "prewrite_row_sha256": "3" * 64,
+            "stable_row_sha256": "4" * 64,
+            "policy_input_sha256": "5" * 64,
+            "classifier_sha256": "6" * 64,
+            "verdict": "PASS",
+        }
+    elif existing_outcome == "refusal":
+        existing_path = refusal_path
+        counterpart = claim_path
+        existing_value = {
+            "schema": REFUSAL_SCHEMA,
+            "operation": MANIFEST_OPERATION,
+            "ok": False,
+            "state": "preparation_refused",
+            "failure_code": "PREPARATION_REFUSED",
+            "manifest_sha256": manifest_sha256,
+            "claim_identity_sha256": "7" * 64,
+        }
+    else:
+        raise RuntimeError("unknown spent identity fixture")
+    private_json(existing_path, existing_value)
+    existing_bytes = existing_path.read_bytes()
+    before = database_state(database)
+    completed = subprocess.run(
+        command(private_root, database, manifest_path, manifest_sha256),
+        capture_output=True,
+        text=True,
+        env=environment(),
+    )
+    if (
+        completed.returncode != 2
+        or completed.stdout
+        or completed.stderr
+        != "ClassificationPreparationError[IDENTITY_SPENT]: preparation stopped\n"
+        or existing_path.read_bytes() != existing_bytes
+        or counterpart.exists()
+        or invocation_marker.exists()
+        or database_state(database) != before
+    ):
+        raise RuntimeError(
+            f"existing {existing_outcome} did not stop before classifier invocation"
+        )
+    return {
+        "existing_outcome": existing_outcome,
+        "outcome_bytes_unchanged": True,
+        "classifier_invocations": 0,
+        "database_read_only": True,
+        "stdout_empty": True,
     }
 
 
@@ -411,12 +499,17 @@ def main() -> int:
             run_success_case(base, "success-killed", "KILLED"),
         ]
         refusal = run_refusal_case(base)
+        spent_identities = [
+            run_spent_identity_case(base, "claim"),
+            run_spent_identity_case(base, "refusal"),
+        ]
         print(
             json.dumps(
                 {
                     "schema": "taey_apply_classification_preparer_gate_v1",
                     "success": success,
                     "refusal": refusal,
+                    "spent_identities": spent_identities,
                     "verdict": "PASS",
                 },
                 sort_keys=True,
