@@ -102,3 +102,16 @@ Accept only one compact terminal receipt whose transaction SHA matches Step 2 an
 - the Presence proxy returned to zero active turns.
 
 Do not proceed to filtering, scoring, ATS work, application submission, or messaging under this transaction.
+
+## Qualified production baseline
+
+The exact deployed public baseline `253b882571673ae30d3beadda6f174439755a241`, invoked through Presence `c42bd319b2fb8ef6b9774b6ef171293baf73e897`, completed two fresh production intakes against the database identity bound to the active application feed:
+
+| Proof | Transaction SHA-256 | Receipt SHA-256 | Database observation |
+| --- | --- | --- | --- |
+| Active-feed intake | `450809eaf94c031e897b0f779aac162d67f020f7832d41f97db38fc87498e2af` | `5bbf41bf33fe9044ac259b9f099d23c80b57bae8c3bb29a34f4b5ccb4a48e464` | `jobs` 2238 → 2239 |
+| Fresh joined-chain intake | `eab0e62a33ff343f4fd04040af74fb06447ad8bed8d01a97e3dedd5cc3af9960` | `d73d96d18932ac45b9f87c1c138f7b4494ebd859923fd1c27fad9745a6645157` | `jobs` 2239 → 2240 |
+
+Each proof used one Taey call and no retry. Independent readback found exactly one paired row; exact match counts were one card, one current job ID, four search references, and three selection identities. `applications` remained 49, `apply_runs` remained 593, and `verdict`, `score`, and `applied_at` remained SQL `NULL`. Claims and receipts were owner-controlled `0400` regular files, and Presence returned to zero active turns.
+
+Before these proofs, the runtime binding was corrected to the database identity used by the active feed. The correction did not change this public contract, publish the private binding, migrate or delete data, or alter the legacy audit row.

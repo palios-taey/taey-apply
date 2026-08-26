@@ -63,8 +63,8 @@ python3 tools/validate_preparer.py
 python3 tools/validate_contract.py
 ```
 
-These gates validate packaging and the deterministic data boundary with generated sanitized state. They are not a production qualification. Production use remains blocked until exact-SHA review, merge, deployment, and a real Taey execution receipt.
+These gates validate packaging and the deterministic data boundary with generated sanitized state. They do not replace exact-SHA review, deployment, or real Taey execution receipts. The production evidence qualified for the current baseline is recorded in the [canonical runbook](docs/LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md#qualified-production-baseline).
 
 ## Status
 
-Version `0.1.1` implements deterministic transaction preparation and capture-to-unclassified-intake only. Classification, scoring, ATS interaction, and application actions are deliberately absent.
+Version `0.1.1` implements deterministic transaction preparation and capture-to-unclassified-intake only. Public commit `253b882571673ae30d3beadda6f174439755a241`, through Presence commit `c42bd319b2fb8ef6b9774b6ef171293baf73e897`, produced two independently checked production intake receipts against the active application feed. Classification, scoring, ATS interaction, and application actions are deliberately absent.
