@@ -174,8 +174,9 @@ class PresenceTransport:
 
 
 class DecisionTransport:
-    def __init__(self, content: str) -> None:
+    def __init__(self, content: str, *, tool_calls: object = None) -> None:
         self.content = content
+        self.tool_calls = tool_calls
         self.calls: list[dict[str, Any]] = []
 
     def post(
@@ -188,7 +189,11 @@ class DecisionTransport:
             "choices": [
                 {
                     "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": self.content},
+                    "message": {
+                        "role": "assistant",
+                        "content": self.content,
+                        "tool_calls": self.tool_calls,
+                    },
                 }
             ]
         }
@@ -292,6 +297,47 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
         "schema decision changed",
     )
     require(len(transport.calls) == 1, "decision transport retried")
+    empty_tool_calls = DecisionTransport(
+        canonical_json_bytes(exact).decode(), tool_calls=[]
+    )
+    empty_tool_calls_client = TaeyJsonSchemaDecisionClient(
+        endpoint_value=DECISION_ENDPOINT,
+        model_value="taey-production",
+        transport=empty_tool_calls,
+    )
+    require(
+        empty_tool_calls_client.decide(
+            context,
+            event_id="event-empty-tools",
+            correlation_id="correlation-empty-tools",
+        )
+        == exact,
+        "empty tool-call list was not accepted",
+    )
+    require(len(empty_tool_calls.calls) == 1, "empty tool-call decision retried")
+    nonempty_tool_calls = DecisionTransport(
+        canonical_json_bytes(exact).decode(),
+        tool_calls=[{"id": "call_1", "type": "function"}],
+    )
+    nonempty_tool_calls_client = TaeyJsonSchemaDecisionClient(
+        endpoint_value=DECISION_ENDPOINT,
+        model_value="taey-production",
+        transport=nonempty_tool_calls,
+    )
+    try:
+        nonempty_tool_calls_client.decide(
+            context,
+            event_id="event-nonempty-tools",
+            correlation_id="correlation-nonempty-tools",
+        )
+    except ApplicationExecutorError as exc:
+        require(
+            exc.failure_code == "unmapped_ui_or_question",
+            "nonempty tool-call refusal code drifted",
+        )
+    else:
+        raise RuntimeError("nonempty tool-call list was accepted")
+    require(len(nonempty_tool_calls.calls) == 1, "nonempty tool-call decision retried")
     payload = transport.calls[0]["payload"]
     response_format = payload["response_format"]
     work_evidence_schema = response_format["json_schema"]["schema"]["properties"][
@@ -452,6 +498,8 @@ if __name__ == "__main__":
                 "network_calls": 0,
                 "schema_constrained_decisions": 2,
                 "private_exact_option_resolutions": 1,
+                "empty_tool_call_lists_accepted": 1,
+                "nonempty_tool_call_lists_accepted": 0,
                 "model_prose_accepted": 0,
                 "private_values_in_decision_context": 0,
                 "private_paths_in_decision_context": 0,

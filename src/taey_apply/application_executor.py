@@ -382,11 +382,15 @@ class TaeyJsonSchemaDecisionClient:
         choice = choices[0] if isinstance(choices, list) and len(choices) == 1 else None
         message = choice.get("message") if isinstance(choice, Mapping) else None
         content = message.get("content") if isinstance(message, Mapping) else None
+        tool_calls = message.get("tool_calls") if isinstance(message, Mapping) else None
         if (
             not isinstance(choice, Mapping)
             or choice.get("finish_reason") != "stop"
             or not isinstance(message, Mapping)
-            or message.get("tool_calls") is not None
+            or not (
+                tool_calls is None
+                or (isinstance(tool_calls, list) and len(tool_calls) == 0)
+            )
             or not isinstance(content, str)
             or not content
         ):
