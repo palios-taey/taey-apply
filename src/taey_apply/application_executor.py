@@ -262,7 +262,6 @@ def _decision_schema(context: GreenhouseDecisionContext) -> dict[str, Any]:
                 "type": "array",
                 "items": work_items,
                 "maxItems": len(evidence_options),
-                "uniqueItems": True,
             },
             "expected_option_name": (
                 {"type": "null"}

@@ -294,11 +294,13 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
     require(len(transport.calls) == 1, "decision transport retried")
     payload = transport.calls[0]["payload"]
     response_format = payload["response_format"]
+    work_evidence_schema = response_format["json_schema"]["schema"]["properties"][
+        "work_evidence_keys"
+    ]
     require(
         response_format["type"] == "json_schema"
         and response_format["json_schema"]["strict"] is True
-        and "work_evidence_keys"
-        in response_format["json_schema"]["schema"]["properties"]
+        and "uniqueItems" not in work_evidence_schema
         and payload["chat_template_kwargs"] == {"enable_thinking": False}
         and "tools" not in payload,
         "native schema contract drifted",
