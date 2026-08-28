@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/employer-confirmation-v1.json",
+  "title": "Stable employer confirmation evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "properties": {
+    "provider": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+    "application_identity_sha256": {"$ref": "#/$defs/digest"},
+    "route_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "route_sha256": {"$ref": "#/$defs/digest"},
+    "anchor_sha256": {"$ref": "#/$defs/digest"},
+    "stable_surface_revision": {"$ref": "#/$defs/digest"},
+    "stable_sample_count": {"type": "integer", "minimum": 2, "maximum": 64},
+    "observation_samples_sha256": {"$ref": "#/$defs/digest"},
+    "receipt_sha256": {"$ref": "#/$defs/digest"}
+  },
+  "required": [
+    "provider",
+    "application_identity_sha256",
+    "route_id",
+    "route_sha256",
+    "anchor_sha256",
+    "stable_surface_revision",
+    "stable_sample_count",
+    "observation_samples_sha256",
+    "receipt_sha256"
+  ]
+}

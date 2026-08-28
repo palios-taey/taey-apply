@@ -289,6 +289,7 @@ def run_application(
                     expected_application_identity_sha256=(
                         envelope.application_identity_sha256
                     ),
+                    expected_receipt_sha256=outcome.receipt_sha256,
                 )
             except ApplicationConfirmationError:
                 return _finalize(
