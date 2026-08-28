@@ -124,7 +124,7 @@ one action at a time. Taey cites only a current capsule ref/revision, allowed
 operation, and fact/evidence keys; the compiler copies the exact private value
 or artifact into one owner-only frozen action and publishes the immutable
 manifest consumed by Presence. Unknown questions and missing truth halt. There
-is no routine human review, generic field map, retry, HTTP call, shell, or direct
+is no human-review state or queue, generic field map, retry, HTTP call, shell, or direct
 Hands import. Submit stays closed until the bounded Hands/Presence capsule
 relays its already-computed `required_controls_complete` proof.
 

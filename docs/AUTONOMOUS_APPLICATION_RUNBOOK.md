@@ -19,7 +19,7 @@ application identity:
 Each binding points to one owner-controlled `0400` canonical JSON receipt and
 its SHA-256. The lifecycle also binds one opaque `0400` application context,
 one bounded one-action call budget, and derived envelope/result/refusal refs.
-There is no routine human review or approval field and no queue.
+There is no human-review state, approval field, or review queue.
 
 ## Materialize completed evidence once
 

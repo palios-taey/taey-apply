@@ -38,8 +38,8 @@ is terminal side-effect uncertainty.
 Success requires a stable exact confirmation binding: matching provider and
 application identity, one exact route digest, one exact confirmation-anchor
 digest, at least two consecutive matched samples of one stable surface revision,
-the samples digest, and the exact terminal executor receipt. A routine human
-review or approval field and queue are absent. The bounded action budget is an
+the samples digest, and the exact terminal executor receipt. Human review,
+approval fields, and review queues are absent. The bounded action budget is an
 authority boundary, not permission to retry.
 
 The runtime compiler is additive and provider-specific. Its initial call emits
@@ -88,7 +88,7 @@ fact or work claim stops as `missing_truthful_applicant_data`; absent submission
 authority stops as `policy_or_authority_boundary`.
 
 The materializer owns no browser, ATS provider grammar, database, submission,
-routine human review, approval field, or queue. A live question that has no
+human-review state, approval field, or review queue. A live question that has no
 exact answer in the frozen context remains a downstream terminal
 `missing_truthful_applicant_data` event, not permission to guess.
 
