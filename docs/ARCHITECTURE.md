@@ -12,6 +12,7 @@
 | Application preparer | Validate six immutable prerequisite gates and publish one single-use provider-neutral envelope |
 | Application materializer | Compile completed private evidence into six gates, one opaque context, and one lifecycle |
 | Application runner | Enforce one-action receipt chaining and terminate only at exact employer confirmation or one of five declared stop boundaries |
+| Runtime action compiler | Validate one Taey decision against the current bounded surface, copy exact private values/artifacts from the immutable context, and freeze one Presence-owned action |
 | Injected one-action executor | Separately reviewed Presence adapter; owns transport into Hands but no lifecycle policy |
 | Presence / Hands | Provider-specific UI mapping, exact one-action execution, and postcondition evidence |
 
@@ -41,10 +42,32 @@ the samples digest, and the exact terminal executor receipt. A routine human
 review or approval field and queue are absent. The bounded action budget is an
 authority boundary, not permission to retry.
 
-The concrete Presence transport adapter is deliberately absent until its public
-contract has completed independent review. The runner is complete against the
-protocol and does not guess an endpoint, tool name, request field, locator, or
-postcondition grammar.
+The runtime compiler is additive and provider-specific. Its initial call emits
+only `observe_form`. Every later call requires one exact current
+`ats_greenhouse_next_action_surface_v1` capsule, one exact Taey decision, the
+prior Hands event hash, and the immutable application context. Taey supplies
+only the current ref/revision, an allowed operation, fact/evidence keys, and a
+fresh exact option name where applicable. It never supplies an applicant value,
+artifact path, locator, or primitive. The compiler verifies the selected keys,
+copies the private bytes from the context, and writes one owner-controlled
+`0400` Hands action plus the exact Presence manifest for that turn.
+
+The compiler preserves the one-action native chooser sequence and accepts an
+option only from the immediately current options capsule. An unsupported
+question or action stops as `unmapped_ui_or_question`; an absent exact value or
+artifact stops as `missing_truthful_applicant_data`; a stale capsule or missing
+postcondition proof stops before any file is written. There is no human review,
+approval, queue, automatic retry, or generic field map.
+
+Presence main `09ecd810482f7d4865a5e2d57dbfdb82985e1df2` owns the reviewed
+`greenhouse-ats-ui` profile and its raw `POST /v1/greenhouse-ats/one-action`
+transaction route; Hands `fb3d1270aba4c6a335769a348a69461b87a7595f` owns
+execution. The direct route returns the raw validated terminal tool object and
+stops after the first refusal. A separately reviewed injected executor may bind
+that route to the provider-neutral runner. The generic chat-completions response
+is model-authored final text and is not accepted as a machine receipt. The
+runner and compiler do not parse model prose, shell into Hands, or read a hidden
+receipt path.
 
 ## Application materialization boundary
 
@@ -68,6 +91,32 @@ The materializer owns no browser, ATS provider grammar, database, submission,
 routine human review, approval field, or queue. A live question that has no
 exact answer in the frozen context remains a downstream terminal
 `missing_truthful_applicant_data` event, not permission to guess.
+
+## Greenhouse runtime compiler boundary
+
+`GreenhouseActionCompiler` consumes the materialized context unchanged. It does
+not prebind a company form label because live Greenhouse forms and dropdown
+options vary. Taey examines only the bounded public capsule and returns a
+decision matching `schemas/greenhouse-action-decision-v1.json`. The compiler
+then verifies that the ref occurs exactly once at the cited revision and that
+the requested operation is currently declared by Hands.
+
+Text and option actions require one existing `fact_key`; selected work evidence
+keys must also exist but never become answer text. A fill fact must already be
+exact rendered text, and a dropdown fact must exactly equal the name of one
+fresh option. Boolean choice activation requires exact `true`. Artifact actions
+derive the sole matching resume or cover from the materialized materials stage
+and revalidate its immutable bytes before placing its absolute path only in the
+private frozen action.
+
+Submit compilation additionally requires
+`surface_capsule.required_controls_complete == true`. Hands currently proves
+that predicate internally before clicking Submit but its bounded capsule at
+`fb3d1270` does not yet carry the Boolean. Therefore non-submit compilation is
+executable while Submit compilation intentionally stops as
+`exact_postcondition_failure` until Hands adds that exact Boolean and Presence
+validates and relays it. The compiler does not infer completeness from optional
+fields or from action history.
 
 ## Preparation boundary
 

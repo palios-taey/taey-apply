@@ -67,16 +67,60 @@ envelope digest, and only public-safe IDs/counts. Failure after identity
 reservation writes one immutable refusal. A prepared or refused identity is
 never reused.
 
+## Compile one current action
+
+The public `GreenhouseActionCompiler` is the deterministic boundary between one
+Taey surface decision and the existing Hands action envelope. Construct it with
+the explicit private root, seat, display, and reviewed Hands commit. Its first
+`compile` call accepts no capsule or decision and freezes only `observe_form`.
+Each later call accepts:
+
+- the current `OneActionRequest` and exact prior receipt hash;
+- one validated bounded `ats_greenhouse_next_action_surface_v1` capsule;
+- one decision matching `schemas/greenhouse-action-decision-v1.json`;
+- fresh explicit event and correlation IDs.
+
+The decision carries no applicant value or artifact path. Taey cites the exact
+current ref/revision and a fact key for text, combo, option, or choice actions.
+The compiler verifies current allowed operations, requires an exact fresh option
+name for `select_option`, validates cited work-evidence keys, copies private
+values and paths from the immutable context, and writes exactly:
+
+```text
+PRIVATE_ROOT/actions/SEAT/CORRELATION.json
+PRIVATE_ROOT/transactions/SEAT/CORRELATION.json
+```
+
+Both are canonical owner-controlled `0400` files. The latter is the exact
+manifest read by Presence `greenhouse-ats-ui`. One action ID is derived from the
+envelope, sequence, correlation, decision digest, and capsule digest. The
+transaction ID stays stable across the application and every later action binds
+the prior Hands event hash. An occupied identity, missing fact, stale revision,
+unmapped question, wrong fresh option, native chooser order mismatch, or missing
+artifact is terminal. There is no human review, approval, queue, retry, dynamic
+generic mapping, endpoint, network request, shell, or direct Hands import.
+
+Submit remains mechanically closed until the bounded Hands/Presence capsule
+adds one exact `required_controls_complete` Boolean. Hands already computes and
+rechecks this property internally; the current bounded capsule does not expose
+it. The compiler requires it to be exactly `true` and otherwise stops before
+writing a Submit action.
+
 ## Execute through one reviewed adapter
 
 `application_runner.run_application` accepts an injected
 `OneActionExecutor`. The executor receives one `OneActionRequest` and returns
 one `OneActionOutcome`; the runner contains no transport configuration.
 
-The concrete production adapter must be a reviewed public Presence contract
-that delegates provider UI behavior to Hands. Until that contract is merged,
-production binding is blocked. Do not substitute a private endpoint, shell
-command, direct Hands import, or handwritten request shape.
+Presence main `09ecd810482f7d4865a5e2d57dbfdb82985e1df2` exposes the reviewed
+`POST /v1/greenhouse-ats/one-action` route. It accepts an exact display-only
+body under the `greenhouse-ats-ui` tool profile, performs the opaque
+observe/operate pair, returns the raw terminal tool object, and stops after the
+first refusal. A separately reviewed `OneActionExecutor` adapter may bind that
+route to the runner; this compiler does not perform transport. Generic
+chat-completions model prose is never a validated `surface_capsule` or
+`employer_confirmation`. Do not substitute prose parsing, an unreviewed
+endpoint, shell command, direct Hands import, or hidden receipt-path read.
 
 For each accepted call the runner requires:
 
@@ -105,6 +149,7 @@ The terminal result always sets `next_mutation_authorized` to `false`.
 ```bash
 python3 tools/validate_application_boundary.py
 python3 tools/validate_application_materializer.py
+python3 tools/validate_application_action_compiler.py
 ```
 
 The gate uses generated private fixtures and an injected executor. It proves
