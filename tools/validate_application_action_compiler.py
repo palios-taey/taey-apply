@@ -600,6 +600,17 @@ def refusal_cases(root: Path) -> int:
             "exact_postcondition_failure",
         ),
         (
+            "duplicate-work-evidence",
+            decision(
+                "focus",
+                revision,
+                control_ref,
+                fact_key="full_name",
+                work_keys=["automation", "automation"],
+            ),
+            "unmapped_ui_or_question",
+        ),
+        (
             "unmapped",
             {
                 "schema": DECISION_SCHEMA,
@@ -707,6 +718,7 @@ if __name__ == "__main__":
         json.dumps(
             {
                 "fixture_cases": 1 + failures,
+                "duplicate_work_evidence_keys_accepted": 0,
                 "frozen_action_kinds": 11,
                 "human_review_states": 0,
                 "network_calls": 0,
