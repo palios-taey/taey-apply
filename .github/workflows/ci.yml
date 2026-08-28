@@ -27,6 +27,7 @@ jobs:
           taey-prepare-linkedin-classification --help
           taey-linkedin-intake --help
           taey-linkedin-classification --help
+          taey-prepare-application --help
       - name: Transaction preparer gate
         run: python3 tools/validate_preparer.py
       - name: Contract gate
@@ -35,6 +36,8 @@ jobs:
         run: python3 tools/validate_classification.py
       - name: Classification preparer gate
         run: python3 tools/validate_classification_preparer.py
+      - name: Autonomous application boundary gate
+        run: python3 tools/validate_application_boundary.py
       - name: Build wheel
         run: python3 -m pip wheel . --no-deps --wheel-dir dist
       - name: Secret scan

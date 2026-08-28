@@ -6,7 +6,11 @@ The connector boundary is narrow:
 
 - raw captures and mutable state remain in parent-configured private roots;
 - stdout contains compact counts and digests only;
-- no personal profile, filter, scorer, ATS, or application-action code belongs here;
+- generic application contracts may coordinate a separately owned, reviewed
+  one-action UI executor through an injected protocol;
+- no ATS locator, UI walker, UI primitive, personal profile, private policy,
+  applicant secret, or private database implementation belongs here;
+- autonomous execution has no routine human review or approval field or queue;
 - one frozen transaction is single-use at the parent boundary;
 - first mismatch stops the transaction with no fallback or retry;
 - production runs only from reviewed, merged, committed releases.
@@ -16,7 +20,7 @@ Use isolated worktrees. Fetch before branching. Every behavioral claim requires 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **taey-apply** (315 symbols, 526 relationships, 17 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **taey-apply** (1310 symbols, 2445 relationships, 110 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

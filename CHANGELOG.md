@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add provider-neutral autonomous application lifecycle, frozen-envelope,
+  one-action runner, and exact employer-confirmation contracts behind a
+  deliberately unbound executor protocol.
 - Record a fresh one-call production qualification of the repaired classifier-import preparer and the existing empty-object Taey classification connector, with immutable receipt and zero-residual-state evidence.
 - Resolve the pinned classifier's exact `boards` import from its manifest-bound priority-board artifact without changing global import state, and record a fixed preparation stage plus classifier-invocation status on every new refusal.
 - Add a parent-only one-shot classification claim preparer that binds a canonical private manifest, reuses the qualified-intake and row-digest contracts, observes SQLite read-only/query-only, invokes pinned classifier bytes exactly once, and publishes either one existing-schema claim or one immutable refusal without reserving the commit attempt.
