@@ -39,7 +39,7 @@ DECISION_SCHEMA = "taey_apply_greenhouse_action_decision_v1"
 FROZEN_ACTION_SCHEMA = "ats_greenhouse_frozen_action_v1"
 PRESENCE_MANIFEST_SCHEMA = "taey_greenhouse_ats_private_manifest_v1"
 SURFACE_SCHEMA = "ats_greenhouse_next_action_surface_v1"
-REQUIRED_HANDS_COMMIT = "ff01cc29290e31a28699104ef8e67013572813da"
+REQUIRED_HANDS_COMMIT = "4171a6cc700128d0d9d1107e8a91221a8ea6a1c1"
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _DISPLAY_RE = re.compile(r":[1-9][0-9]{0,2}")
