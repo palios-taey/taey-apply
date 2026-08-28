@@ -83,10 +83,14 @@ Each later call accepts:
 The decision carries no applicant value or artifact path. Taey cites the exact
 current ref/revision and a fact key for text, combo, or choice actions. On a
 fresh options capsule, Taey cites only `select_option`, the revision, and a fact
-key; ref and option name remain null. The private compiler requires exactly one
-current option whose exact name equals the immutable private fact. It validates
-cited work-evidence keys, copies private values and paths from the immutable
-context, and writes exactly:
+key; ref and option name remain null. For an exact `Country` / `combo box`
+origin, every option must carry one nonempty unique public `semantic_token`.
+The private compiler requires one exact immutable-fact/token match and freezes
+that control's untouched rendered name for postcondition validation. Every
+other origin must carry no token and continues to require exact immutable-fact
+/ rendered-name equality. Prefix, fuzzy, and normalized matching are absent.
+The compiler validates cited work-evidence keys, copies private values and paths
+from the immutable context, and writes exactly:
 
 ```text
 PRIVATE_ROOT/actions/SEAT/CORRELATION.json
@@ -104,7 +108,7 @@ generic mapping, endpoint, network request, shell, or direct Hands import.
 
 Submit remains mechanically closed unless the bounded Hands/Presence capsule
 contains exactly `required_controls_complete: true`. Hands
-`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` computes, exposes, and rechecks that
+`3218faae41aad580da82cd396808ac72e118174e` computes, exposes, and rechecks that
 proof, and the reviewed Presence contract validates and relays it. The compiler
 stops before writing a Submit action when the proof is absent or false.
 

@@ -56,8 +56,10 @@ value, path, employer value, or policy decision.
 
 The Greenhouse runtime compiler receives a bounded surface capsule and a Taey
 decision containing only current opaque refs, revisions, allowed operation,
-fact keys, work-evidence keys, and an exact fresh option name when applicable.
-It reopens the immutable context itself. Raw fact values and artifact paths are
+fact keys, and work-evidence keys. The bounded public capsule may carry rendered
+option names and the exact Country semantic tokens produced by Hands; the
+decision carries neither. The compiler reopens the immutable context itself.
+Raw fact values and artifact paths are
 copied only into the owner-controlled `0400` Hands action; they are absent from
 the decision, compiler result, and Presence manifest. The compiler performs no
 network request, UI action, shell command, or direct Hands call.

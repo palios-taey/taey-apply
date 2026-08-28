@@ -54,19 +54,24 @@ verifies the selected keys, copies the private bytes from the context, and
 writes one owner-controlled `0400` Hands action plus the exact Presence manifest
 for that turn.
 
-The compiler preserves the one-action native chooser sequence and resolves an
-option privately only when exactly one control in the immediately current
-options capsule has a name equal to the cited fact. Taey receives the fact key,
-not its value, and supplies neither an option ref nor an option name. An
-unsupported question, absent match, duplicate match, or action stops as
-`unmapped_ui_or_question`; an absent exact value or artifact stops as
-`missing_truthful_applicant_data`; a stale capsule or missing postcondition
-proof stops before any file is written. There is no human review, approval,
-queue, automatic retry, or generic field map.
+The compiler preserves the one-action native chooser sequence. An exact
+`Country` / `combo box` origin must carry one nonempty unique public
+`semantic_token` for every current option. The compiler matches the immutable
+private fact to exactly one token, then freezes that control's untouched
+rendered `name` for selection postvalidation. Every other options origin must
+carry no semantic token and continues to require exact rendered-name equality.
+Taey receives the fact key, not its value, and supplies neither an option ref
+nor an option name. An unsupported question, absent match, duplicate match, or
+action stops as `unmapped_ui_or_question`; an invalid capsule, missing or
+duplicate Country token, or token on another origin stops as
+`exact_postcondition_failure`; an absent exact value or artifact stops as
+`missing_truthful_applicant_data`. There is no prefix, fuzzy, or normalized
+fallback and no human review, approval, queue, automatic retry, or generic
+field map.
 
 The reviewed Presence `greenhouse-ats-ui` profile owns the raw
 `POST /v1/greenhouse-ats/one-action` transaction route; Hands
-`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` owns execution. Production must pin
+`3218faae41aad580da82cd396808ac72e118174e` owns execution. Production must pin
 an exact reviewed Presence checkout that exposes that contract. The direct
 route returns the raw validated terminal tool object and stops after the first
 refusal. A separately reviewed injected executor may bind that route to the
@@ -126,15 +131,16 @@ the requested operation is currently declared by Hands.
 
 Text and option actions require one existing `fact_key`; selected work evidence
 keys must also exist but never become answer text. A fill fact must already be
-exact rendered text, and a dropdown fact must exactly equal the name of one
-fresh option. Boolean choice activation requires exact `true`. Artifact actions
+exact rendered text. A dropdown fact must equal one fresh rendered name except
+for the exact Country semantic-token contract described above. Boolean choice
+activation requires exact `true`. Artifact actions
 derive the sole matching resume or cover from the materialized materials stage
 and revalidate its immutable bytes before placing its absolute path only in the
 private frozen action.
 
 Submit compilation additionally requires
 `surface_capsule.required_controls_complete == true`. Hands
-`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` emits that Boolean from its exact
+`3218faae41aad580da82cd396808ac72e118174e` emits that Boolean from its exact
 required-control proof, and the reviewed Presence contract validates and relays
 it. The compiler does not infer completeness from optional fields or from
 action history.
