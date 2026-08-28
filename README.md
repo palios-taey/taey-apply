@@ -63,8 +63,11 @@ of one stable surface, bound to the terminal executor receipt
 The provider-neutral runner still depends only on its `OneActionExecutor`
 protocol. The concrete `GreenhousePresenceOneActionExecutor` binds that seam to
 the reviewed Presence Greenhouse route. It asks Taey for one native
-`json_schema` decision over only the bounded current surface plus available
-fact/evidence keys, invokes the compiler once, and sends exactly the lineage
+`json_schema` candidate over only the bounded current surface plus available
+fact keys. The grammar exposes only surface-legal action branches and the
+action-specific ref, fact key, or terminal code Taey must choose. The adapter
+stamps the already-known capsule revision and constant-null private fields into
+the existing strict decision contract, invokes the compiler once, and sends exactly the lineage
 headers plus `{"display":":N"}` to Presence. It consumes only the raw machine
 object; model-authored prose is never a decision or receipt transport. For an
 exact Country combo, the reviewed Hands capsule carries one unique public
@@ -130,8 +133,9 @@ application preparer. It does not access UI or a database, choose a live option,
 submit, or create a human review or approval queue.
 
 `application_action_compiler.GreenhouseActionCompiler` consumes that context
-one action at a time. Taey cites only a current capsule ref/revision, allowed
-operation, and fact/evidence keys; the compiler copies the exact private value
+one action at a time. Taey cites only an allowed operation, its current
+action-scoped ref, and a fact key when that operation requires one. The runtime
+projects the current capsule revision mechanically; the compiler copies the exact private value
 or artifact into one owner-only frozen action and publishes the immutable
 manifest consumed by Presence. Unknown questions and missing truth halt. There
 is no human-review state or queue, generic field map, retry, HTTP call, shell, or direct

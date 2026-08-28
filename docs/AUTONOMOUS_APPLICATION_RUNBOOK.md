@@ -80,10 +80,12 @@ Each later call accepts:
 - one decision matching `schemas/greenhouse-action-decision-v1.json`;
 - fresh explicit event and correlation IDs.
 
-The decision carries no applicant value or artifact path. Taey cites the exact
-current ref/revision and a fact key for text, combo, or choice actions. On a
-fresh options capsule, Taey cites only `select_option`, the revision, and a fact
-key; ref and option name remain null. For an exact `Country` / `combo box`
+The model candidate carries no applicant value, artifact path, revision, option
+name, or work-evidence selection. Taey cites the exact current action-scoped ref
+and a fact key for text, combo, or choice actions. The executor projects the
+already observed capsule revision into the existing v1 compiler decision. On a
+fresh options capsule, Taey cites only `select_option` and a fact key; ref and
+option name remain private compiler authority. For an exact `Country` / `combo box`
 origin, every option must carry one nonempty unique public `semantic_token`.
 The private compiler requires one exact immutable-fact/token match and freezes
 that control's untouched rendered name for postcondition validation. Every
@@ -130,8 +132,8 @@ first refusal. `GreenhousePresenceOneActionExecutor` binds that route to the
 runner. The first call compiles the read-only observation. Each later call
 obtains one native schema-constrained Taey decision from the current bounded
 capsule, publishes one frozen action/manifest, and invokes Presence once using
-exact identity headers and a display-only body. Only fact/evidence key names
-reach Taey; applicant values and artifact paths remain private and are copied
+exact identity headers and a display-only body. Only fact-key names reach Taey;
+applicant values and artifact paths remain private and are copied
 by the compiler after the decision. Generic model prose is never a decision,
 `surface_capsule`, receipt, or `employer_confirmation`.
 

@@ -39,8 +39,9 @@ from .contract import (
 )
 
 
-DECISION_INPUT_SCHEMA = "taey_apply_greenhouse_decision_input_v1"
+DECISION_INPUT_SCHEMA = "taey_apply_greenhouse_decision_input_v2"
 DECISION_OUTPUT_SCHEMA = "taey_apply_greenhouse_action_decision_v1"
+DECISION_CANDIDATE_SCHEMA = "taey_apply_greenhouse_action_candidate_v2"
 PRESENCE_TOOL_PROFILE = "greenhouse-ats-ui"
 PRESENCE_ROUTE = "/v1/greenhouse-ats/one-action"
 TAEY_DECISION_ROUTE = "/v1/chat/completions"
@@ -56,6 +57,11 @@ _STOP_CODES = frozenset(
         "side_effect_uncertainty",
     }
 )
+_FACT_ACTIONS = frozenset(
+    {"focus", "fill", "scroll_combo", "open_combo", "select_option", "activate_choice"}
+)
+_FORM_FACT_ACTIONS = _FACT_ACTIONS - {"select_option"}
+_FORM_NONFACT_ACTIONS = frozenset({"open_upload", "submit"})
 
 
 class ApplicationExecutorError(RuntimeError):
@@ -332,96 +338,100 @@ class SingleRequestJsonTransport:
 
 def _decision_schema(context: GreenhouseDecisionContext) -> dict[str, Any]:
     fact_options = list(context.available_fact_keys)
-    evidence_options = list(context.available_work_evidence_keys)
     surface = context.surface_capsule.get("surface")
-    options_surface = surface == "options"
-    action_options: list[str] = []
+    branches: list[dict[str, Any]] = []
+
+    def add_branch(action: str, authority: Mapping[str, Any]) -> None:
+        properties = {
+            "schema": {"const": DECISION_CANDIDATE_SCHEMA},
+            "action": {"const": action},
+            **authority,
+        }
+        branches.append(
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": properties,
+                "required": list(properties),
+            }
+        )
+
+    if surface == "options":
+        if fact_options:
+            add_branch("select_option", {"fact_key": {"enum": fact_options}})
+        return {"oneOf": branches}
     if surface == "form":
-        seen_operations: set[str] = set()
+        action_refs: dict[str, list[str]] = {}
         for control in context.surface_capsule.get("controls", []):
             for operation in control.get("operations", []):
-                if operation not in seen_operations:
-                    seen_operations.add(operation)
-                    action_options.append(operation)
+                refs = action_refs.setdefault(operation, [])
+                if control["ref"] not in refs:
+                    refs.append(control["ref"])
+        for action, refs in action_refs.items():
+            if action in _FORM_FACT_ACTIONS and fact_options and refs:
+                add_branch(
+                    action,
+                    {"ref": {"enum": refs}, "fact_key": {"enum": fact_options}},
+                )
+            elif action in _FORM_NONFACT_ACTIONS and refs:
+                add_branch(action, {"ref": {"enum": refs}})
     elif surface == "native_dialog":
         native_step = _NATIVE_SEQUENCE.get(context.previous_action_kind or "")
         if native_step is not None:
-            action_options.append(native_step[0])
-    action_options.append("halt")
-    work_items: dict[str, Any] = {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9_]{0,127}$",
+            mapped = context.surface_capsule.get("mapped", {})
+            refs = mapped.get(native_step[1], []) if isinstance(mapped, Mapping) else []
+            if len(refs) == 1:
+                add_branch(native_step[0], {"ref": {"const": refs[0]["ref"]}})
+    if surface in {"form", "native_dialog"}:
+        add_branch("halt", {"stop_code": {"enum": sorted(_STOP_CODES)}})
+    return {"oneOf": branches}
+
+
+def _project_decision(
+    context: GreenhouseDecisionContext,
+    schema: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    matches: list[Mapping[str, Any]] = []
+    for branch in schema.get("oneOf", []):
+        properties = branch.get("properties")
+        required = branch.get("required")
+        if (
+            not isinstance(properties, Mapping)
+            or not isinstance(required, list)
+            or frozenset(candidate) != frozenset(required)
+        ):
+            continue
+        exact = True
+        for key, constraint in properties.items():
+            value = candidate.get(key)
+            if (
+                not isinstance(constraint, Mapping)
+                or ("const" in constraint and value != constraint["const"])
+                or ("enum" in constraint and value not in constraint["enum"])
+            ):
+                exact = False
+                break
+        if exact:
+            matches.append(branch)
+    if len(matches) != 1:
+        raise ApplicationDecisionContractError(
+            "Taey candidate does not match one current action branch"
+        )
+    action = candidate["action"]
+    projected = {
+        "schema": DECISION_OUTPUT_SCHEMA,
+        "action": action,
+        "ref": None if action in {"halt", "select_option"} else candidate.get("ref"),
+        "revision": (
+            None if action == "halt" else context.surface_capsule.get("revision")
+        ),
+        "fact_key": candidate.get("fact_key") if action in _FACT_ACTIONS else None,
+        "work_evidence_keys": [],
+        "expected_option_name": None,
+        "stop_code": candidate.get("stop_code") if action == "halt" else None,
     }
-    if evidence_options:
-        work_items = {"enum": evidence_options}
-    return {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "schema": {"const": DECISION_OUTPUT_SCHEMA},
-            "action": (
-                {"const": "select_option"}
-                if options_surface
-                else {"enum": action_options}
-            ),
-            "ref": (
-                {"type": "null"}
-                if options_surface
-                else {
-                    "oneOf": [
-                        {
-                            "type": "string",
-                            "pattern": "^(?:r_[0-9a-f]{32}|nd1_[0-9a-f]{64})$",
-                        },
-                        {"type": "null"},
-                    ]
-                }
-            ),
-            "revision": {
-                "oneOf": [
-                    {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-                    {"type": "null"},
-                ]
-            },
-            "fact_key": {
-                "oneOf": [
-                    {"enum": fact_options},
-                    {"type": "null"},
-                ]
-            },
-            "work_evidence_keys": {
-                "type": "array",
-                "items": work_items,
-                "maxItems": len(evidence_options),
-            },
-            "expected_option_name": (
-                {"type": "null"}
-                if options_surface
-                else {
-                    "oneOf": [
-                        {"type": "string", "minLength": 1, "maxLength": 4096},
-                        {"type": "null"},
-                    ]
-                }
-            ),
-            "stop_code": {
-                "oneOf": [
-                    {"enum": sorted(_STOP_CODES)},
-                    {"type": "null"},
-                ]
-            },
-        },
-        "required": [
-            "schema",
-            "action",
-            "ref",
-            "revision",
-            "fact_key",
-            "work_evidence_keys",
-            "expected_option_name",
-            "stop_code",
-        ],
-    }
+    return _accepted_decision(projected)
 
 
 class TaeyJsonSchemaDecisionClient:
@@ -495,10 +505,14 @@ class TaeyJsonSchemaDecisionClient:
             "application_identity_sha256": context.application_identity_sha256,
             "current_surface": context.surface_capsule,
             "available_fact_keys": list(context.available_fact_keys),
-            "available_work_evidence_keys": list(context.available_work_evidence_keys),
             "previous_action_kind": context.previous_action_kind,
         }
         schema = _decision_schema(context)
+        if not schema["oneOf"]:
+            self._reject(
+                "decision_transport_failure",
+                "current surface has no exact model decision branch",
+            )
         payload = {
             "model": self._model,
             "messages": [
@@ -506,15 +520,15 @@ class TaeyJsonSchemaDecisionClient:
                     "role": "system",
                     "content": (
                         "Choose exactly one next action from the current bounded "
-                        "Greenhouse surface. Use only its exact ref and revision and "
-                        "only the listed fact or work-evidence keys. For an options "
-                        "surface, choose select_option and the relevant fact key; leave "
-                        "ref and expected_option_name null so the private compiler can "
-                        "resolve exactly one truthful option without exposing its value. "
-                        "Follow the "
+                        "Greenhouse surface. Use only the action-scoped exact ref and "
+                        "listed fact keys admitted by the response schema. For an options "
+                        "surface, choose select_option and the relevant fact key so the "
+                        "private compiler can resolve exactly one truthful option without "
+                        "exposing its value. Follow the "
                         "native chooser sequence one action at a time. Submit only when "
                         "required_controls_complete is true. If current evidence cannot "
-                        "prove one action, halt with the exact terminal code."
+                        "prove one action and halt is admitted, halt with the exact "
+                        "terminal code."
                     ),
                 },
                 {
@@ -596,13 +610,21 @@ class TaeyJsonSchemaDecisionClient:
                 "Taey schema decision is not one exact JSON object",
                 decision_rejection_code="decision_response_content_malformed",
             ) from exc
-        if frozenset(decision) != frozenset(schema["required"]):
+        action_branches = [
+            branch
+            for branch in schema["oneOf"]
+            if branch["properties"]["action"]["const"] == decision.get("action")
+        ]
+        if action_branches and all(
+            frozenset(decision) != frozenset(branch["required"])
+            for branch in action_branches
+        ):
             self._reject(
                 "decision_fields_malformed",
-                "Taey schema decision fields are not exact",
+                "Taey candidate fields do not match its action branch",
             )
         try:
-            return _accepted_decision(decision)
+            return _project_decision(context, schema, decision)
         except ApplicationDecisionContractError as exc:
             self._last_rejection_code = exc.rejection_code
             raise ApplicationExecutorError(

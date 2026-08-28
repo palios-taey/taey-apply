@@ -46,9 +46,12 @@ The runtime compiler is additive and provider-specific. Its initial call emits
 only `observe_form`. Every later call requires one exact current
 `ats_greenhouse_next_action_surface_v1` capsule, one exact Taey decision, the
 prior Hands event hash, and the immutable application context. Taey supplies
-only an allowed operation, the current revision, fact/evidence keys, and the
-current ref for non-option actions. For a fresh options capsule, ref and option
-name remain null and the private compiler resolves one exact match. Taey never
+only an allowed operation, a fact key when required, and the current
+action-scoped ref for non-option actions. The executor projects the already
+observed capsule revision, constant-null option name, and empty work-evidence
+selection into the existing strict decision contract. For a fresh options
+capsule, the model has no ref, option-name, revision, work-evidence, or halt
+field and the private compiler resolves one exact match. Taey never
 supplies an applicant value, artifact path, locator, or primitive. The compiler
 verifies the selected keys, copies the private bytes from the context, and
 writes one owner-controlled `0400` Hands action plus the exact Presence manifest
@@ -88,9 +91,11 @@ receipt path.
 
 `GreenhousePresenceOneActionExecutor` is the concrete binding. Its initial
 runner call compiles only `observe_form`; every later call gives Taey the exact
-bounded capsule, the prior action kind, and only the available fact/evidence
-key names. Native vLLM `json_schema` generation runs with thinking disabled and
-no tools. The adapter validates the exact decision, publishes one compiler
+bounded capsule, the prior action kind, and only the available fact-key names.
+Native vLLM `json_schema` generation runs with thinking disabled and no tools.
+Its full-object branches expose only currently legal actions and their exact
+model-owned fields. The adapter validates one branch, projects the deterministic
+fields into the unchanged v1 decision, publishes one compiler
 action/manifest, and makes one POST to the reviewed Presence route with exact
 seat/event/correlation/profile headers and a display-only body. It validates
 the echoed response lineage and converts the bounded receipt, next capsule, or
@@ -147,13 +152,15 @@ exact answer in the frozen context remains a downstream terminal
 
 `GreenhouseActionCompiler` consumes the materialized context unchanged. It does
 not prebind a company form label because live Greenhouse forms and dropdown
-options vary. Taey examines only the bounded public capsule and returns a
-decision matching `schemas/greenhouse-action-decision-v1.json`. The compiler
+options vary. Taey examines only the bounded public capsule and returns one
+`taey_apply_greenhouse_action_candidate_v2` branch. The executor projects it to
+a decision matching `schemas/greenhouse-action-decision-v1.json`. The compiler
 then verifies that the ref occurs exactly once at the cited revision and that
 the requested operation is currently declared by Hands.
 
-Text and option actions require one existing `fact_key`; selected work evidence
-keys must also exist but never become answer text. A fill fact must already be
+Text and option actions require one existing `fact_key`. Work evidence remains
+validated in the immutable application context but is not model-owned and never
+becomes answer text. A fill fact must already be
 exact rendered text. A dropdown fact must equal one fresh rendered name except
 for the exact Country semantic-token contract described above. Boolean choice
 activation requires exact `true`. Artifact actions
