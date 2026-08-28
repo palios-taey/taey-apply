@@ -108,6 +108,26 @@ def decision(
     }
 
 
+def candidate(
+    action: str,
+    *,
+    control_ref: str | None = None,
+    fact_key: str | None = None,
+    stop_code: str | None = None,
+) -> dict[str, Any]:
+    value: dict[str, Any] = {
+        "schema": "taey_apply_greenhouse_action_candidate_v2",
+        "action": action,
+    }
+    if control_ref is not None:
+        value["ref"] = control_ref
+    if fact_key is not None:
+        value["fact_key"] = fact_key
+    if stop_code is not None:
+        value["stop_code"] = stop_code
+    return value
+
+
 class FrozenDecisionSource:
     def __init__(self, value: Mapping[str, Any]) -> None:
         self.value = value
@@ -259,6 +279,36 @@ def executor(
     )
 
 
+def require_candidate_refusal(
+    root: Path,
+    context: GreenhouseDecisionContext,
+    content: str,
+    seat: str,
+    *,
+    expected_calls: int = 1,
+    expected_code: str = "decision_fields_malformed",
+) -> None:
+    transport = DecisionTransport(content)
+    client = decision_client(root, seat, transport)
+    try:
+        client.decide(
+            context,
+            event_id=f"{seat}-event",
+            correlation_id=f"{seat}-correlation",
+        )
+    except ApplicationExecutorError as exc:
+        require(
+            exc.failure_code == "unmapped_ui_or_question"
+            and exc.decision_rejection_code == expected_code,
+            f"{seat} refusal class drifted",
+        )
+    else:
+        raise RuntimeError(f"{seat} candidate was accepted")
+    require(
+        len(transport.calls) == expected_calls, f"{seat} decision request count drifted"
+    )
+
+
 def terminal_evidence(
     root: Path, outcome: OneActionOutcome
 ) -> tuple[Mapping[str, Any], Path]:
@@ -343,7 +393,8 @@ def success_case(
 
 def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
     exact = decision("fill", ref(1), str(capsule["revision"]), "full_name")
-    transport = DecisionTransport(canonical_json_bytes(exact).decode())
+    exact_candidate = candidate("fill", control_ref=ref(1), fact_key="full_name")
+    transport = DecisionTransport(canonical_json_bytes(exact_candidate).decode())
     client = decision_client(root, "schema-exact", transport)
     context = GreenhouseDecisionContext(
         identity, capsule, ("full_name",), ("automation",), "observe_form"
@@ -363,7 +414,9 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
                             "finish_reason": "stop",
                             "message": {
                                 "role": "assistant",
-                                "content": canonical_json_bytes(exact).decode(),
+                                "content": canonical_json_bytes(
+                                    exact_candidate
+                                ).decode(),
                                 "tool_calls": None,
                             },
                         }
@@ -374,7 +427,7 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
         "decision response digest was not retained",
     )
     empty_tool_calls = DecisionTransport(
-        canonical_json_bytes(exact).decode(), tool_calls=[]
+        canonical_json_bytes(exact_candidate).decode(), tool_calls=[]
     )
     empty_tool_calls_client = decision_client(
         root, "schema-empty-tools", empty_tool_calls
@@ -390,7 +443,7 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
     )
     require(len(empty_tool_calls.calls) == 1, "empty tool-call decision retried")
     nonempty_tool_calls = DecisionTransport(
-        canonical_json_bytes(exact).decode(),
+        canonical_json_bytes(exact_candidate).decode(),
         tool_calls=[{"id": "call_1", "type": "function"}],
     )
     nonempty_tool_calls_client = decision_client(
@@ -417,18 +470,35 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
     require(len(nonempty_tool_calls.calls) == 1, "nonempty tool-call decision retried")
     payload = transport.calls[0]["payload"]
     response_format = payload["response_format"]
-    work_evidence_schema = response_format["json_schema"]["schema"]["properties"][
-        "work_evidence_keys"
-    ]
+    candidate_schema = response_format["json_schema"]["schema"]
+    fill_branch = next(
+        item
+        for item in candidate_schema["oneOf"]
+        if item["properties"]["action"] == {"const": "fill"}
+    )
+    halt_branch = next(
+        item
+        for item in candidate_schema["oneOf"]
+        if item["properties"]["action"] == {"const": "halt"}
+    )
     require(
         response_format["type"] == "json_schema"
         and response_format["json_schema"]["strict"] is True
-        and "uniqueItems" not in work_evidence_schema
-        and response_format["json_schema"]["schema"]["properties"]["action"]
-        == {"enum": ["fill", "halt"]}
+        and fill_branch["required"] == ["schema", "action", "ref", "fact_key"]
+        and fill_branch["properties"]["ref"] == {"enum": [ref(1)]}
+        and fill_branch["properties"]["fact_key"] == {"enum": ["full_name"]}
+        and halt_branch["required"] == ["schema", "action", "stop_code"]
+        and all(
+            field not in canonical_json_bytes(candidate_schema).decode()
+            for field in (
+                "revision",
+                "expected_option_name",
+                "work_evidence_keys",
+            )
+        )
         and payload["chat_template_kwargs"] == {"enable_thinking": False}
         and "tools" not in payload,
-        "native schema contract drifted",
+        "candidate schema contract drifted",
     )
     require(
         PRIVATE_SENTINEL.encode() not in canonical_json_bytes(payload),
@@ -437,7 +507,10 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
     option_revision = digest("executor-options")
     options = options_capsule(identity, option_revision, ref(2), ref(3))
     option_value = decision("select_option", None, option_revision, "country")
-    option_transport = DecisionTransport(canonical_json_bytes(option_value).decode())
+    option_candidate = candidate("select_option", fact_key="country")
+    option_transport = DecisionTransport(
+        canonical_json_bytes(option_candidate).decode()
+    )
     option_client = decision_client(root, "schema-option", option_transport)
     option_context = GreenhouseDecisionContext(
         identity,
@@ -458,10 +531,13 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
     option_schema = option_transport.calls[0]["payload"]["response_format"][
         "json_schema"
     ]["schema"]
+    option_branch = option_schema["oneOf"][0]
     require(
-        option_schema["properties"]["action"] == {"const": "select_option"}
-        and option_schema["properties"]["ref"] == {"type": "null"}
-        and option_schema["properties"]["expected_option_name"] == {"type": "null"},
+        len(option_schema["oneOf"]) == 1
+        and option_branch["required"] == ["schema", "action", "fact_key"]
+        and option_branch["properties"]["action"] == {"const": "select_option"}
+        and option_branch["properties"]["fact_key"] == {"enum": ["country"]}
+        and "halt" not in canonical_json_bytes(option_schema).decode(),
         "private option-resolution schema widened",
     )
     repeated_operations = form_capsule(
@@ -493,8 +569,12 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
         )
     )
     require(
-        repeated_schema["properties"]["action"]
-        == {"enum": ["focus", "fill", "open_combo", "halt"]},
+        [item["properties"]["action"]["const"] for item in repeated_schema["oneOf"]]
+        == ["focus", "fill", "open_combo", "halt"]
+        and repeated_schema["oneOf"][0]["properties"]["ref"]
+        == {"enum": [ref(4), ref(5)]}
+        and repeated_schema["oneOf"][1]["properties"]["ref"] == {"enum": [ref(4)]}
+        and repeated_schema["oneOf"][2]["properties"]["ref"] == {"enum": [ref(5)]},
         "form operations were not exact, unique, and first-seen",
     )
     native_steps = (
@@ -519,9 +599,263 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
             )
         )
         require(
-            native_schema["properties"]["action"] == {"enum": [expected, "halt"]},
+            [item["properties"]["action"]["const"] for item in native_schema["oneOf"]]
+            == [expected, "halt"]
+            and native_schema["oneOf"][0]["properties"]["ref"]
+            == {"const": native_ref(number)},
             "native action schema exceeded the evidenced sequence",
         )
+    halt_candidate = candidate("halt", stop_code="missing_truthful_applicant_data")
+    halt_expected = {
+        "schema": "taey_apply_greenhouse_action_decision_v1",
+        "action": "halt",
+        "ref": None,
+        "revision": None,
+        "fact_key": None,
+        "work_evidence_keys": [],
+        "expected_option_name": None,
+        "stop_code": "missing_truthful_applicant_data",
+    }
+    halt_client = decision_client(
+        root,
+        "schema-halt-positive",
+        DecisionTransport(canonical_json_bytes(halt_candidate).decode()),
+    )
+    require(
+        halt_client.decide(
+            context,
+            event_id="event-halt-positive",
+            correlation_id="correlation-halt-positive",
+        )
+        == halt_expected,
+        "halt projection drifted",
+    )
+    upload_surface = form_capsule(
+        identity,
+        digest("executor-upload-candidate"),
+        [
+            {
+                "ref": ref(6),
+                "name": "Resume",
+                "role": "push button",
+                "operations": ["open_upload"],
+                "artifact_slot": "resume",
+            }
+        ],
+        required_complete=False,
+    )
+    upload_context = GreenhouseDecisionContext(
+        identity, upload_surface, (), (), "observe_form"
+    )
+    upload_candidate = candidate("open_upload", control_ref=ref(6))
+    upload_expected = decision(
+        "open_upload", ref(6), str(upload_surface["revision"]), None
+    )
+    upload_client = decision_client(
+        root,
+        "schema-upload-positive",
+        DecisionTransport(canonical_json_bytes(upload_candidate).decode()),
+    )
+    require(
+        upload_client.decide(
+            upload_context,
+            event_id="event-upload-positive",
+            correlation_id="correlation-upload-positive",
+        )
+        == upload_expected,
+        "nonfact projection drifted",
+    )
+    native_surface = native_capsule(
+        identity,
+        digest("executor-native-positive"),
+        "chooser_widget",
+        native_ref(6),
+    )
+    native_context = GreenhouseDecisionContext(
+        identity, native_surface, (), (), "open_upload"
+    )
+    native_candidate = candidate("chooser_location", control_ref=native_ref(6))
+    native_expected = decision(
+        "chooser_location", native_ref(6), str(native_surface["revision"]), None
+    )
+    native_client = decision_client(
+        root,
+        "schema-native-positive",
+        DecisionTransport(canonical_json_bytes(native_candidate).decode()),
+    )
+    require(
+        native_client.decide(
+            native_context,
+            event_id="event-native-positive",
+            correlation_id="correlation-native-positive",
+        )
+        == native_expected,
+        "native projection drifted",
+    )
+
+    invalid_candidates: list[tuple[str, GreenhouseDecisionContext, dict[str, Any]]] = []
+    for suffix, field, value in (
+        ("halt-ref", "ref", ref(1)),
+        ("halt-revision", "revision", str(capsule["revision"])),
+        ("halt-fact", "fact_key", "full_name"),
+    ):
+        invalid = dict(halt_candidate)
+        invalid[field] = value
+        invalid_candidates.append((suffix, context, invalid))
+    invalid_candidates.extend(
+        [
+            (
+                "halt-no-stop",
+                context,
+                candidate("halt"),
+            ),
+            (
+                "nonhalt-stop",
+                context,
+                {**exact_candidate, "stop_code": "unmapped_ui_or_question"},
+            ),
+            (
+                "nonhalt-revision",
+                context,
+                {**exact_candidate, "revision": str(capsule["revision"])},
+            ),
+            (
+                "option-ref",
+                option_context,
+                {**option_candidate, "ref": ref(2)},
+            ),
+            (
+                "option-name",
+                option_context,
+                {**option_candidate, "expected_option_name": "private"},
+            ),
+            (
+                "fact-missing",
+                context,
+                candidate("fill", control_ref=ref(1)),
+            ),
+            (
+                "nonfact-fact",
+                upload_context,
+                {**upload_candidate, "fact_key": "full_name"},
+            ),
+            (
+                "model-option-name",
+                context,
+                {**exact_candidate, "expected_option_name": "private"},
+            ),
+            (
+                "work-evidence-duplicate",
+                context,
+                {**exact_candidate, "work_evidence_keys": ["automation", "automation"]},
+            ),
+            (
+                "work-evidence-unknown",
+                context,
+                {**exact_candidate, "work_evidence_keys": ["unknown"]},
+            ),
+            (
+                "form-action-absent",
+                context,
+                candidate("submit", control_ref=ref(1)),
+            ),
+            (
+                "native-action-wrong",
+                native_context,
+                candidate("chooser_confirm", control_ref=native_ref(6)),
+            ),
+            (
+                "native-ref-wrong",
+                native_context,
+                candidate("chooser_location", control_ref=native_ref(7)),
+            ),
+            (
+                "extra-field",
+                context,
+                {**exact_candidate, "extra": "field"},
+            ),
+        ]
+    )
+    for suffix, candidate_context, invalid in invalid_candidates:
+        require_candidate_refusal(
+            root,
+            candidate_context,
+            canonical_json_bytes(invalid).decode(),
+            f"schema-negative-{suffix}",
+            expected_code=(
+                "decision_cross_field_malformed"
+                if suffix
+                in {"form-action-absent", "native-action-wrong", "native-ref-wrong"}
+                else "decision_fields_malformed"
+            ),
+        )
+    duplicate_json = (
+        '{"schema":"taey_apply_greenhouse_action_candidate_v2",'
+        '"schema":"taey_apply_greenhouse_action_candidate_v2",'
+        f'"action":"fill","ref":"{ref(1)}","fact_key":"full_name"}}'
+    )
+    require_candidate_refusal(
+        root,
+        context,
+        duplicate_json,
+        "schema-negative-duplicate-json",
+        expected_code="decision_response_content_malformed",
+    )
+    empty_option_context = GreenhouseDecisionContext(
+        identity, options, (), (), "open_combo"
+    )
+    require_candidate_refusal(
+        root,
+        empty_option_context,
+        canonical_json_bytes(option_candidate).decode(),
+        "schema-negative-empty-options",
+        expected_calls=0,
+        expected_code="decision_transport_failure",
+    )
+    unknown_operation_surface = form_capsule(
+        identity,
+        digest("executor-unknown-operation"),
+        [
+            {
+                "ref": ref(7),
+                "name": "Unknown",
+                "role": "push button",
+                "operations": ["coordinate_click"],
+            }
+        ],
+        required_complete=False,
+    )
+    unknown_schema = _decision_schema(
+        GreenhouseDecisionContext(
+            identity, unknown_operation_surface, ("full_name",), (), "observe_form"
+        )
+    )
+    require(
+        [branch["properties"]["action"]["const"] for branch in unknown_schema["oneOf"]]
+        == ["halt"],
+        "unknown form operation became model authority",
+    )
+    ambiguous_native = dict(native_surface)
+    ambiguous_native["mapped"] = {
+        "chooser_widget": [
+            *native_surface["mapped"]["chooser_widget"],
+            {
+                **native_surface["mapped"]["chooser_widget"][0],
+                "ref": native_ref(7),
+            },
+        ]
+    }
+    ambiguous_schema = _decision_schema(
+        GreenhouseDecisionContext(identity, ambiguous_native, (), (), "open_upload")
+    )
+    require(
+        [
+            branch["properties"]["action"]["const"]
+            for branch in ambiguous_schema["oneOf"]
+        ]
+        == ["halt"],
+        "ambiguous native ref became model authority",
+    )
     prose = decision_client(
         root,
         "schema-prose",
@@ -663,9 +997,8 @@ def assert_decision_rejection(
 def forensic_terminal_cases(
     root: Path, envelope: Any, envelope_sha256: str, capsule: Mapping[str, Any]
 ) -> None:
-    incomplete = decision("fill", ref(1), str(capsule["revision"]), "full_name")
-    incomplete.pop("stop_code")
-    cross_field = decision("fill", None, str(capsule["revision"]), "full_name")
+    incomplete = candidate("fill", control_ref=ref(1))
+    cross_field = candidate("fill", control_ref=ref(1), fact_key="unknown")
     rejection_cases = (
         (
             "executor-envelope-refusal",
@@ -699,13 +1032,33 @@ def forensic_terminal_cases(
             expected_rejection_code=rejection_code,
         )
 
-    stale = decision("fill", ref(1), digest("stale-revision"), "full_name")
-    stale_transport = DecisionTransport(canonical_json_bytes(stale).decode())
-    compiler_presence = PresenceTransport(capsule)
+    choice_capsule = form_capsule(
+        envelope.application_identity_sha256,
+        digest("compiler-choice-refusal"),
+        [
+            {
+                "ref": ref(1),
+                "name": "Consent",
+                "role": "check box",
+                "operations": ["activate_choice"],
+            }
+        ],
+        required_complete=False,
+    )
+    choice_candidate = candidate(
+        "activate_choice", control_ref=ref(1), fact_key="full_name"
+    )
+    projected_choice = decision(
+        "activate_choice", ref(1), str(choice_capsule["revision"]), "full_name"
+    )
+    choice_transport = DecisionTransport(
+        canonical_json_bytes(choice_candidate).decode()
+    )
+    compiler_presence = PresenceTransport(choice_capsule)
     compiler_executor = executor(
         root,
-        capsule,
-        decision_client(root, "executor-compiler-refusal", stale_transport),
+        choice_capsule,
+        decision_client(root, "executor-compiler-refusal", choice_transport),
         compiler_presence,
         "executor-compiler-refusal",
     )
@@ -721,16 +1074,16 @@ def forensic_terminal_cases(
     decision_path = root / str(evidence["accepted_decision_ref"])
     decision_bytes = decision_path.read_bytes()
     require(
-        terminal.stop_code == "exact_postcondition_failure"
+        terminal.stop_code == "missing_truthful_applicant_data"
         and evidence["stage"] == "compile"
         and evidence["reason_code"] == "compiler_refused"
         and digest(decision_bytes) == evidence["accepted_decision_sha256"]
-        and json.loads(decision_bytes) == stale
+        and json.loads(decision_bytes) == projected_choice
         and stat.S_IMODE(decision_path.stat().st_mode) == 0o400
         and isinstance(evidence["decision_response_ref"], str)
         and evidence["decision_response_sha256"] is not None
         and evidence["decision_rejection_code"] is None
-        and evidence["capsule_sha256"] == digest(canonical_json_bytes(capsule))
+        and evidence["capsule_sha256"] == digest(canonical_json_bytes(choice_capsule))
         and len(compiler_presence.calls) == 1
         and PRIVATE_SENTINEL.encode() not in decision_bytes,
         "compiler-stage evidence did not bind the exact accepted decision",
@@ -738,7 +1091,8 @@ def forensic_terminal_cases(
 
     halt = decision("halt", None, None, None)
     halt["stop_code"] = "unmapped_ui_or_question"
-    halt_transport = DecisionTransport(canonical_json_bytes(halt).decode())
+    halt_candidate = candidate("halt", stop_code="unmapped_ui_or_question")
+    halt_transport = DecisionTransport(canonical_json_bytes(halt_candidate).decode())
     halt_presence = PresenceTransport(capsule)
     halt_executor = executor(
         root,
