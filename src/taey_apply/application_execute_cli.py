@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from urllib.parse import urlsplit
 
 from .application_contract import ApplicationContractError
 from .application_executor import (
@@ -35,6 +36,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> dict:
+    decision_endpoint = urlsplit(args.taey_decision_endpoint)
+    presence_endpoint = urlsplit(args.presence_endpoint)
+    if (decision_endpoint.scheme, decision_endpoint.netloc) == (
+        presence_endpoint.scheme,
+        presence_endpoint.netloc,
+    ):
+        raise ApplicationExecutorError(
+            "policy_or_authority_boundary",
+            "Taey decision and Presence endpoints must use distinct origins",
+        )
     decision_transport = SingleRequestJsonTransport(
         timeout_seconds=args.decision_timeout_seconds
     )

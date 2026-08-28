@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -32,6 +33,7 @@ from taey_apply.application_executor import (  # noqa: E402
 )
 from taey_apply.application_materializer import materialize_application_context  # noqa: E402
 from taey_apply.application_preparer import prepare_application  # noqa: E402
+from taey_apply import application_execute_cli  # noqa: E402
 from taey_apply.contract import (  # noqa: E402
     IntakeContractError,
     canonical_json_bytes,
@@ -632,11 +634,78 @@ def static_boundary() -> None:
     )
 
 
+def endpoint_pair_boundary(root: Path) -> None:
+    transports: list[int] = []
+    application_calls: list[Mapping[str, Any]] = []
+
+    class TrackingTransport:
+        def __init__(self, *, timeout_seconds: int) -> None:
+            transports.append(timeout_seconds)
+
+    def frozen_args(decision_endpoint: str, presence_endpoint: str) -> argparse.Namespace:
+        return argparse.Namespace(
+            private_root=str(root),
+            envelope_file=str(root / "unused-envelope.json"),
+            envelope_sha256="0" * 64,
+            seat_id="executor-endpoint-pair",
+            display=":17",
+            hands_commit=REQUIRED_HANDS_COMMIT,
+            event_id="executor-endpoint-pair-event",
+            correlation_id="executor-endpoint-pair-correlation",
+            taey_decision_endpoint=decision_endpoint,
+            taey_model="taey-production",
+            presence_endpoint=presence_endpoint,
+            decision_timeout_seconds=181,
+            presence_timeout_seconds=301,
+        )
+
+    def accept_application(**values: Any) -> dict[str, bool]:
+        application_calls.append(values)
+        return {"ok": True}
+
+    original_transport = application_execute_cli.SingleRequestJsonTransport
+    original_runner = application_execute_cli.run_application
+    application_execute_cli.SingleRequestJsonTransport = TrackingTransport
+    application_execute_cli.run_application = accept_application
+    try:
+        try:
+            application_execute_cli.run(
+                frozen_args(
+                    "https://shared.invalid/v1/chat/completions",
+                    "https://shared.invalid/v1/greenhouse-ats/one-action",
+                )
+            )
+        except ApplicationExecutorError as exc:
+            require(
+                exc.failure_code == "policy_or_authority_boundary",
+                "same-origin refusal code drifted",
+            )
+        else:
+            raise RuntimeError("same-origin decision and Presence pair was accepted")
+        require(
+            transports == [] and application_calls == [],
+            "same-origin pair reached transport construction",
+        )
+        require(
+            application_execute_cli.run(
+                frozen_args(DECISION_ENDPOINT, PRESENCE_ENDPOINT)
+            )
+            == {"ok": True}
+            and transports == [181, 301]
+            and len(application_calls) == 1,
+            "distinct decision and Presence pair did not construct",
+        )
+    finally:
+        application_execute_cli.SingleRequestJsonTransport = original_transport
+        application_execute_cli.run_application = original_runner
+
+
 if __name__ == "__main__":
     static_boundary()
     with tempfile.TemporaryDirectory(prefix="taey-apply-executor-") as temp:
         private_root = Path(temp)
         private_root.chmod(0o700)
+        endpoint_pair_boundary(private_root)
         envelope, envelope_sha256, identity = envelope_fixture(private_root)
         capsule = form_capsule(
             identity,
@@ -674,6 +743,8 @@ if __name__ == "__main__":
                 "private_paths_in_decision_context": 0,
                 "presence_body_fields": ["display"],
                 "presence_calls_after_first_error": 0,
+                "same_origin_endpoint_pairs_accepted": 0,
+                "distinct_endpoint_pairs_constructed": 1,
                 "terminal_evidence_artifacts": 4,
                 "accepted_decision_artifacts": 2,
                 "human_review_states": 0,
