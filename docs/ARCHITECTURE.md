@@ -59,9 +59,9 @@ artifact stops as `missing_truthful_applicant_data`; a stale capsule or missing
 postcondition proof stops before any file is written. There is no human review,
 approval, queue, automatic retry, or generic field map.
 
-Presence main `09ecd810482f7d4865a5e2d57dbfdb82985e1df2` owns the reviewed
+Presence main `77921e87876cfbe6cf3bef5a5570e8ff47a99698` owns the reviewed
 `greenhouse-ats-ui` profile and its raw `POST /v1/greenhouse-ats/one-action`
-transaction route; Hands `fb3d1270aba4c6a335769a348a69461b87a7595f` owns
+transaction route; Hands `043a45e3414c02bb7805d2ddf12eb6ce02ee7889` owns
 execution. The direct route returns the raw validated terminal tool object and
 stops after the first refusal. A separately reviewed injected executor may bind
 that route to the provider-neutral runner. The generic chat-completions response
@@ -110,13 +110,11 @@ and revalidate its immutable bytes before placing its absolute path only in the
 private frozen action.
 
 Submit compilation additionally requires
-`surface_capsule.required_controls_complete == true`. Hands currently proves
-that predicate internally before clicking Submit but its bounded capsule at
-`fb3d1270` does not yet carry the Boolean. Therefore non-submit compilation is
-executable while Submit compilation intentionally stops as
-`exact_postcondition_failure` until Hands adds that exact Boolean and Presence
-validates and relays it. The compiler does not infer completeness from optional
-fields or from action history.
+`surface_capsule.required_controls_complete == true`. Hands
+`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` emits that Boolean and Presence
+`77921e87876cfbe6cf3bef5a5570e8ff47a99698` validates and relays it. The
+compiler still refuses Submit when the proof is absent or false and never
+infers completeness from optional fields or action history.
 
 ## Preparation boundary
 

@@ -125,8 +125,8 @@ operation, and fact/evidence keys; the compiler copies the exact private value
 or artifact into one owner-only frozen action and publishes the immutable
 manifest consumed by Presence. Unknown questions and missing truth halt. There
 is no human-review state or queue, generic field map, retry, HTTP call, shell, or direct
-Hands import. Submit stays closed until the bounded Hands/Presence capsule
-relays its already-computed `required_controls_complete` proof.
+Hands import. Submit compiles only when the bounded Hands/Presence capsule
+proves `required_controls_complete == true`.
 
 ## Mechanical gates
 
@@ -149,7 +149,6 @@ These gates validate packaging and the deterministic data boundary with generate
 Version `0.1.1` includes deterministic transaction preparation, capture-to-unclassified intake, and the additive classification commit connector. Public commit `253b882571673ae30d3beadda6f174439755a241`, through Presence commit `c42bd319b2fb8ef6b9774b6ef171293baf73e897`, produced two independently checked production intake receipts against the active application feed. Public classification commit `f3560aae4777bb8396ad8ae3cc98b2bec0dc23b1`, through Presence commit `7c2b1e79f346921c83a8829697b0ffcb0dfb9bc9`, then completed the bounded one-shot Taey classification acceptance recorded in the [classification runbook](docs/LINKEDIN_APPLICATION_CLASSIFICATION_RUNBOOK.md#qualified-production-baseline).
 
 The provider-neutral autonomous layer and Greenhouse runtime compiler have only
-mechanical fixture qualification. The runner-to-Presence adapter and the
-required-controls capsule proof remain open, so there is no production-
-application claim. Existing intake and classification production baselines are
-unchanged.
+mechanical fixture qualification. The runner-to-Presence adapter remains open,
+so there is no production-application claim. Existing intake and classification
+production baselines are unchanged.

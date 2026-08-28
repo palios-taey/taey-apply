@@ -100,11 +100,11 @@ unmapped question, wrong fresh option, native chooser order mismatch, or missing
 artifact is terminal. There is no human review, approval, queue, retry, dynamic
 generic mapping, endpoint, network request, shell, or direct Hands import.
 
-Submit remains mechanically closed until the bounded Hands/Presence capsule
-adds one exact `required_controls_complete` Boolean. Hands already computes and
-rechecks this property internally; the current bounded capsule does not expose
-it. The compiler requires it to be exactly `true` and otherwise stops before
-writing a Submit action.
+Submit compilation requires the bounded Hands/Presence capsule to carry exactly
+`required_controls_complete: true`. Hands
+`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` emits that proof and Presence
+`77921e87876cfbe6cf3bef5a5570e8ff47a99698` validates and relays it. The
+compiler stops before writing a Submit action when the proof is absent or false.
 
 ## Execute through one reviewed adapter
 
@@ -112,7 +112,7 @@ writing a Submit action.
 `OneActionExecutor`. The executor receives one `OneActionRequest` and returns
 one `OneActionOutcome`; the runner contains no transport configuration.
 
-Presence main `09ecd810482f7d4865a5e2d57dbfdb82985e1df2` exposes the reviewed
+Presence main `77921e87876cfbe6cf3bef5a5570e8ff47a99698` exposes the reviewed
 `POST /v1/greenhouse-ats/one-action` route. It accepts an exact display-only
 body under the `greenhouse-ats-ui` tool profile, performs the opaque
 observe/operate pair, returns the raw terminal tool object, and stops after the
