@@ -9,6 +9,7 @@ from .application_contract import ApplicationContractError
 from .application_executor import (
     ApplicationExecutorError,
     GreenhousePresenceOneActionExecutor,
+    PrivateDecisionResponseRecorder,
     SingleRequestJsonTransport,
     TaeyJsonSchemaDecisionClient,
 )
@@ -56,6 +57,10 @@ def run(args: argparse.Namespace) -> dict:
         endpoint_value=args.taey_decision_endpoint,
         model_value=args.taey_model,
         transport=decision_transport,
+        response_recorder=PrivateDecisionResponseRecorder(
+            private_root_value=args.private_root,
+            seat_id_value=args.seat_id,
+        ),
     )
     executor = GreenhousePresenceOneActionExecutor(
         private_root_value=args.private_root,

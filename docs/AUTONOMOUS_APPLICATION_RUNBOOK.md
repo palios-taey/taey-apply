@@ -131,6 +131,19 @@ reach Taey; applicant values and artifact paths remain private and are copied
 by the compiler after the decision. Generic model prose is never a decision,
 `surface_capsule`, receipt, or `employer_confirmation`.
 
+Each direct-vLLM HTTP response is written once, before validation, beneath:
+
+```text
+PRIVATE_ROOT/application-executor-decision-responses/SEAT/CORRELATION.json
+```
+
+The canonical `0400` artifact binds exact seat/event/correlation lineage,
+request and response digests, and the full parsed response payload. It is
+evidence, not action authority. A malformed response is classified as
+transport, capture, envelope, content, fields, or cross-field failure and
+terminalizes without a Presence call, retry, schema relaxation, or guessed
+action.
+
 Production invokes the installed executable with explicit values; it loads no
 environment file and has no endpoint default:
 
@@ -180,11 +193,13 @@ The terminal result always sets `next_mutation_authorized` to `false`.
 For a returned terminal executor outcome, its receipt digest also binds one
 owner-controlled canonical `0400` artifact matching
 `schemas/application-executor-terminal-evidence-v1.json`. The runner verifies
-the exact private ref/digest before accepting the stop. Evidence uses only the
-four fixed stages and finite reason codes; it contains no exception text or
-applicant value. If a bounded Taey decision existed, a separate canonical
-`0400` private copy is bound by ref and digest so an explicit `halt` can be
-distinguished mechanically from compiler refusal.
+the exact private ref/digest before accepting the stop. When direct-vLLM
+returned a response, the terminal artifact also binds and reopens the exact
+private decision-response artifact plus its finite rejection code. Evidence
+uses only the four fixed stages and finite reason/rejection codes; it contains
+no exception text or applicant value. If a bounded Taey decision was accepted,
+a separate canonical `0400` private copy is bound by ref and digest so an
+explicit `halt` can be distinguished mechanically from compiler refusal.
 
 ## Mechanical gate
 
@@ -196,7 +211,8 @@ python3 tools/validate_application_executor.py
 ```
 
 The gate uses generated private fixtures and an injected executor. It proves
-decision-stage, compiler-stage, explicit-halt, missing/tampered evidence,
-`0400`/exclusive-write, and private-value-omission mechanics without a browser,
-account, applicant, employer, network request, or external mutation. It is not
-production evidence.
+envelope/content/field/cross-field decision rejection, compiler-stage,
+explicit-halt, missing/tampered evidence, `0400`/exclusive-write, and
+private-value-omission mechanics without a browser, account, applicant,
+employer, network request, or external mutation. It is not production
+evidence.

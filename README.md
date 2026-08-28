@@ -51,6 +51,7 @@ single-use frozen application envelope
                  v
 injected one-action executor; at most one mutation per call
 + exact postcondition receipt chain
++ immutable pre-validation direct-vLLM response evidence
 + immutable bounded terminal evidence with exact private digest/ref binding
                  |
                  v

@@ -10,6 +10,7 @@ from .application_confirmation import EmployerConfirmation
 from .contract import (
     IntakeContractError,
     _validate_relative_reference,
+    canonical_json_bytes,
     read_private_json,
     resolve_private_reference,
     sha256_hex,
@@ -21,6 +22,9 @@ LIFECYCLE_SCHEMA = "taey_apply_application_lifecycle_v1"
 ENVELOPE_SCHEMA = "taey_apply_application_envelope_v1"
 RECEIPT_SCHEMA = "taey_apply_application_receipt_v1"
 TERMINAL_EVIDENCE_SCHEMA = "taey_apply_application_executor_terminal_evidence_v1"
+DECISION_RESPONSE_EVIDENCE_SCHEMA = (
+    "taey_apply_application_executor_decision_response_v1"
+)
 OPERATION = "execute_autonomous_application"
 
 EVIDENCE_STATES = {
@@ -59,6 +63,16 @@ TERMINAL_REASON_CODES = frozenset(
         "compiler_refused",
         "taey_explicit_halt",
         "presence_observation_refused",
+    }
+)
+DECISION_REJECTION_CODES = frozenset(
+    {
+        "decision_transport_failure",
+        "decision_response_capture_failed",
+        "decision_response_envelope_malformed",
+        "decision_response_content_malformed",
+        "decision_fields_malformed",
+        "decision_cross_field_malformed",
     }
 )
 
@@ -102,11 +116,26 @@ _TERMINAL_EVIDENCE_KEYS = frozenset(
         "reason_code",
         "accepted_decision_ref",
         "accepted_decision_sha256",
+        "decision_response_ref",
+        "decision_response_sha256",
         "decision_response_payload_sha256",
+        "decision_rejection_code",
         "capsule_sha256",
         "presence_response_payload_sha256",
         "mutation_count",
         "next_mutation_authorized",
+    }
+)
+_DECISION_RESPONSE_EVIDENCE_KEYS = frozenset(
+    {
+        "schema",
+        "application_identity_sha256",
+        "seat_id",
+        "event_id",
+        "correlation_id",
+        "request_payload_sha256",
+        "response_payload_sha256",
+        "response_payload",
     }
 )
 _ACCEPTED_DECISION_KEYS = frozenset(
@@ -154,12 +183,23 @@ _ACCEPTED_DECISION_REF_RE = re.compile(
     r"application-executor-decisions/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/"
     r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json"
 )
+_DECISION_RESPONSE_REF_RE = re.compile(
+    r"application-executor-decision-responses/"
+    r"([A-Za-z0-9][A-Za-z0-9._-]{0,127})/"
+    r"([A-Za-z0-9][A-Za-z0-9._-]{0,127})\.json"
+)
 
 
 class ApplicationContractError(RuntimeError):
     def __init__(self, failure_code: str, message: str) -> None:
         super().__init__(message)
         self.failure_code = failure_code
+
+
+class ApplicationDecisionContractError(ApplicationContractError):
+    def __init__(self, message: str) -> None:
+        super().__init__("side_effect_uncertainty", message)
+        self.rejection_code = "decision_cross_field_malformed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,8 +588,13 @@ def _optional_digest(value: object, context: str) -> str | None:
 
 
 def _accepted_decision(value: object) -> Mapping[str, Any]:
-    decision = _mapping(value, "accepted decision")
-    _exact_keys(decision, _ACCEPTED_DECISION_KEYS, "accepted decision")
+    try:
+        decision = _mapping(value, "accepted decision")
+        _exact_keys(decision, _ACCEPTED_DECISION_KEYS, "accepted decision")
+    except ApplicationContractError as exc:
+        raise ApplicationDecisionContractError(
+            "accepted decision fields are malformed"
+        ) from exc
     action = decision["action"]
     if (
         decision["schema"] != "taey_apply_greenhouse_action_decision_v1"
@@ -557,9 +602,7 @@ def _accepted_decision(value: object) -> Mapping[str, Any]:
         or action not in _DECISION_ACTIONS
         or decision["expected_option_name"] is not None
     ):
-        raise ApplicationContractError(
-            "side_effect_uncertainty", "accepted decision is not bounded"
-        )
+        raise ApplicationDecisionContractError("accepted decision is not bounded")
     raw_work_keys = decision["work_evidence_keys"]
     if (
         not isinstance(raw_work_keys, list)
@@ -570,8 +613,8 @@ def _accepted_decision(value: object) -> Mapping[str, Any]:
         )
         or len(raw_work_keys) != len(set(raw_work_keys))
     ):
-        raise ApplicationContractError(
-            "side_effect_uncertainty", "accepted decision keys are not bounded"
+        raise ApplicationDecisionContractError(
+            "accepted decision keys are not bounded"
         )
     if action == "halt":
         if (
@@ -581,8 +624,8 @@ def _accepted_decision(value: object) -> Mapping[str, Any]:
             or not isinstance(decision["stop_code"], str)
             or decision["stop_code"] not in STOP_CODES
         ):
-            raise ApplicationContractError(
-                "side_effect_uncertainty", "accepted terminal decision is malformed"
+            raise ApplicationDecisionContractError(
+                "accepted terminal decision is malformed"
             )
         return decision
     ref = decision["ref"]
@@ -597,19 +640,83 @@ def _accepted_decision(value: object) -> Mapping[str, Any]:
             and (not isinstance(ref, str) or _REF_RE.fullmatch(ref) is None)
         )
     ):
-        raise ApplicationContractError(
-            "side_effect_uncertainty", "accepted decision authority is malformed"
+        raise ApplicationDecisionContractError(
+            "accepted decision authority is malformed"
         )
-    _digest(decision["revision"], "accepted decision revision")
+    try:
+        _digest(decision["revision"], "accepted decision revision")
+    except ApplicationContractError as exc:
+        raise ApplicationDecisionContractError(
+            "accepted decision revision is malformed"
+        ) from exc
     fact_key = decision["fact_key"]
     if (
         action in _FACT_ACTIONS
         and (not isinstance(fact_key, str) or _TOKEN_RE.fullmatch(fact_key) is None)
     ) or (action not in _FACT_ACTIONS and fact_key is not None):
-        raise ApplicationContractError(
-            "side_effect_uncertainty", "accepted decision fact key is malformed"
+        raise ApplicationDecisionContractError(
+            "accepted decision fact key is malformed"
         )
     return decision
+
+
+def _decision_response_evidence(
+    private_root: Path,
+    *,
+    reference: object,
+    expected_sha256: object,
+    expected_application_identity_sha256: str,
+    expected_sequence_number: int,
+    expected_payload_sha256: object,
+) -> Mapping[str, Any]:
+    if not isinstance(reference, str):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "decision response reference is invalid"
+        )
+    match = _DECISION_RESPONSE_REF_RE.fullmatch(reference)
+    if match is None:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "decision response reference is invalid"
+        )
+    artifact_sha256 = _digest(expected_sha256, "decision response artifact")
+    evidence, _ = _bound_private_json(
+        private_root,
+        reference,
+        artifact_sha256,
+        "decision response evidence",
+    )
+    _exact_keys(
+        evidence,
+        _DECISION_RESPONSE_EVIDENCE_KEYS,
+        "decision response evidence",
+    )
+    response_payload = _mapping(
+        evidence["response_payload"], "decision response payload"
+    )
+    response_payload_sha256 = _digest(
+        evidence["response_payload_sha256"], "decision response payload"
+    )
+    if (
+        evidence["schema"] != DECISION_RESPONSE_EVIDENCE_SCHEMA
+        or evidence["application_identity_sha256"]
+        != expected_application_identity_sha256
+        or evidence["seat_id"] != match.group(1)
+        or evidence["correlation_id"] != match.group(2)
+        or not isinstance(evidence["event_id"], str)
+        or _PUBLIC_ID_RE.fullmatch(evidence["event_id"]) is None
+        or not evidence["event_id"].endswith(f".s{expected_sequence_number}")
+        or not evidence["correlation_id"].endswith(
+            f".s{expected_sequence_number}"
+        )
+        or response_payload_sha256 != expected_payload_sha256
+        or response_payload_sha256
+        != sha256_hex(canonical_json_bytes(response_payload))
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "decision response evidence differs"
+        )
+    _digest(evidence["request_payload_sha256"], "decision request payload")
+    return evidence
 
 
 def validate_terminal_outcome_evidence(
@@ -691,8 +798,41 @@ def validate_terminal_outcome_evidence(
             "accepted decision",
         )
         accepted_decision = _accepted_decision(accepted_decision)
+    response_ref = evidence["decision_response_ref"]
+    response_sha256 = evidence["decision_response_sha256"]
+    response_payload_sha256 = evidence["decision_response_payload_sha256"]
+    rejection_code = evidence["decision_rejection_code"]
+    if rejection_code is not None and rejection_code not in DECISION_REJECTION_CODES:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "decision rejection code is invalid"
+        )
+    if (response_ref is None) is not (response_sha256 is None):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "decision response binding is incomplete"
+        )
+    response_evidence: Mapping[str, Any] | None = None
+    if response_ref is not None:
+        response_payload_sha256 = _digest(
+            response_payload_sha256, "decision response payload"
+        )
+        response_evidence = _decision_response_evidence(
+            private_root,
+            reference=response_ref,
+            expected_sha256=response_sha256,
+            expected_application_identity_sha256=(
+                request.envelope.application_identity_sha256
+            ),
+            expected_sequence_number=request.sequence_number,
+            expected_payload_sha256=response_payload_sha256,
+        )
+    elif response_payload_sha256 is not None:
+        _digest(response_payload_sha256, "decision response payload")
+        if rejection_code != "decision_response_capture_failed":
+            raise ApplicationContractError(
+                "side_effect_uncertainty",
+                "unbound decision response payload is not a capture failure",
+            )
     for key in (
-        "decision_response_payload_sha256",
         "capsule_sha256",
         "presence_response_payload_sha256",
     ):
@@ -702,7 +842,10 @@ def validate_terminal_outcome_evidence(
         for key in (
             "accepted_decision_ref",
             "accepted_decision_sha256",
+            "decision_response_ref",
+            "decision_response_sha256",
             "decision_response_payload_sha256",
+            "decision_rejection_code",
             "capsule_sha256",
             "presence_response_payload_sha256",
         )
@@ -729,6 +872,41 @@ def validate_terminal_outcome_evidence(
     if accepted_decision is not None and stage not in {"compile", "presence"}:
         raise ApplicationContractError(
             "side_effect_uncertainty", "accepted decision exceeds its stage"
+        )
+    if stage == "decision":
+        if accepted_decision is not None or rejection_code is None:
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "decision refusal evidence is incomplete"
+            )
+        if rejection_code == "decision_transport_failure" and any(
+            value is not None
+            for value in (response_ref, response_sha256, response_payload_sha256)
+        ):
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "transport refusal exceeds its evidence"
+            )
+        if rejection_code == "decision_response_capture_failed" and (
+            response_ref is not None
+            or response_sha256 is not None
+            or response_payload_sha256 is None
+        ):
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "capture refusal evidence differs"
+            )
+        if rejection_code not in {
+            "decision_transport_failure",
+            "decision_response_capture_failed",
+        } and response_evidence is None:
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "malformed decision response is absent"
+            )
+    elif rejection_code is not None:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "decision rejection exceeds its stage"
+        )
+    if accepted_decision is not None and response_evidence is None:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision response is absent"
         )
     return evidence
 
@@ -840,6 +1018,7 @@ def validate_one_action_outcome(
 
 __all__ = [
     "ApplicationContractError",
+    "ApplicationDecisionContractError",
     "ApplicationEnvelope",
     "ENVELOPE_SCHEMA",
     "EVIDENCE_STATES",
@@ -850,6 +1029,8 @@ __all__ = [
     "OneActionRequest",
     "OPERATION",
     "OUTCOME_STATES",
+    "DECISION_REJECTION_CODES",
+    "DECISION_RESPONSE_EVIDENCE_SCHEMA",
     "RECEIPT_SCHEMA",
     "STOP_CODES",
     "TERMINAL_EVIDENCE_SCHEMA",
