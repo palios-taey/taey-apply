@@ -39,7 +39,7 @@ DECISION_SCHEMA = "taey_apply_greenhouse_action_decision_v1"
 FROZEN_ACTION_SCHEMA = "ats_greenhouse_frozen_action_v1"
 PRESENCE_MANIFEST_SCHEMA = "taey_greenhouse_ats_private_manifest_v1"
 SURFACE_SCHEMA = "ats_greenhouse_next_action_surface_v1"
-REQUIRED_HANDS_COMMIT = "3218faae41aad580da82cd396808ac72e118174e"
+REQUIRED_HANDS_COMMIT = "7835effee404d6468e3b41a40b3708f2e19bfcf6"
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _DISPLAY_RE = re.compile(r":[1-9][0-9]{0,2}")
@@ -1008,7 +1008,10 @@ class GreenhouseActionCompiler:
         revision = str(decision["revision"])
         surface = capsule["surface"]
         if surface == "options":
-            if kind != "select_option" or self._last_action_kind != "open_combo":
+            if kind != "select_option" or self._last_action_kind not in {
+                "observe_form",
+                "open_combo",
+            }:
                 raise ApplicationActionCompilerError(
                     "unmapped_ui_or_question", "fresh options require one exact selection"
                 )
