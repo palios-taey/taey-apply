@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/application-envelope-v1.json",
+  "title": "Frozen autonomous application envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_application_envelope_v1"},
+    "operation": {"const": "execute_autonomous_application"},
+    "provider": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+    "application_identity_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "evidence": {"$ref": "application-lifecycle-v1.json#/$defs/evidence"},
+    "application_context_ref": {"$ref": "application-lifecycle-v1.json#/$defs/private_ref"},
+    "application_context_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "application_context_schema": {"$ref": "application-lifecycle-v1.json#/$defs/schema_name"},
+    "maximum_one_action_calls": {"type": "integer", "minimum": 1, "maximum": 256},
+    "envelope_ref": {"$ref": "application-lifecycle-v1.json#/$defs/envelope_ref"},
+    "result_ref": {"$ref": "application-lifecycle-v1.json#/$defs/result_ref"},
+    "source_manifest_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"}
+  },
+  "required": [
+    "schema",
+    "operation",
+    "provider",
+    "application_identity_sha256",
+    "evidence",
+    "application_context_ref",
+    "application_context_sha256",
+    "application_context_schema",
+    "maximum_one_action_calls",
+    "envelope_ref",
+    "result_ref",
+    "source_manifest_sha256"
+  ]
+}

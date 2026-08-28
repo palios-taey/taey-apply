@@ -51,10 +51,15 @@ REQUIRED_FILES = {
     "README.md",
     "SECURITY.md",
     "docs/ARCHITECTURE.md",
+    "docs/AUTONOMOUS_APPLICATION_RUNBOOK.md",
     "docs/LINKEDIN_APPLICATION_CLASSIFICATION_RUNBOOK.md",
     "docs/LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md",
     "docs/PRIVATE_BOUNDARY.md",
     "pyproject.toml",
+    "schemas/application-envelope-v1.json",
+    "schemas/application-lifecycle-v1.json",
+    "schemas/application-receipt-v1.json",
+    "schemas/application-result-v1.json",
     "schemas/linkedin-intake-private-input-v1.json",
     "schemas/linkedin-intake-receipt-v1.json",
     "schemas/linkedin-intake-result-v1.json",
@@ -63,6 +68,11 @@ REQUIRED_FILES = {
     "schemas/linkedin-classification-receipt-v1.json",
     "schemas/linkedin-classification-result-v1.json",
     "src/taey_apply/classification_cli.py",
+    "src/taey_apply/application_confirmation.py",
+    "src/taey_apply/application_contract.py",
+    "src/taey_apply/application_prepare_cli.py",
+    "src/taey_apply/application_preparer.py",
+    "src/taey_apply/application_runner.py",
     "src/taey_apply/classification_prepare_cli.py",
     "src/taey_apply/classification_preparer.py",
     "src/taey_apply/classification_contract.py",
@@ -73,6 +83,7 @@ REQUIRED_FILES = {
     "src/taey_apply/prepare_cli.py",
     "src/taey_apply/preparer.py",
     "tools/validate_preparer.py",
+    "tools/validate_application_boundary.py",
     "tools/validate_classification.py",
     "tools/validate_classification_preparer.py",
 }
@@ -126,7 +137,23 @@ def scan_python(paths: list[Path]) -> list[str]:
                 and isinstance(node.type, ast.Name)
                 and node.type.id == "Exception"
             ):
-                findings.append(f"{relative}:{node.lineno}: broad Exception handler")
+                boundary = next(
+                    (
+                        function
+                        for function in ast.walk(tree)
+                        if isinstance(function, ast.FunctionDef)
+                        and function.name == "run_application"
+                        and function.lineno <= node.lineno <= function.end_lineno
+                    ),
+                    None,
+                )
+                if not (
+                    relative == "src/taey_apply/application_runner.py"
+                    and boundary is not None
+                ):
+                    findings.append(
+                        f"{relative}:{node.lineno}: broad Exception handler"
+                    )
     return findings
 
 

@@ -4,6 +4,7 @@
 
 - connector source and CLI;
 - JSON schemas;
+- provider-neutral autonomous lifecycle, envelope, runner, and confirmation contracts;
 - compact result and receipt shapes;
 - install and mechanical validation gates;
 - generic documentation.
@@ -17,6 +18,8 @@
 - classification preparation manifests, policy/classifier artifacts, refusal markers, and claims;
 - classification attempt reservations and receipts;
 - the jobs database and state root;
+- application prerequisite evidence receipts and opaque application context;
+- applicant facts, answers, resume/cover-letter paths, and employer-specific values;
 - raw job titles, companies, locations, descriptions, URLs, and account state;
 - personal profiles, preferences, filtering policy, classifier source, terminal classification values, scores, and applications.
 
@@ -29,6 +32,14 @@ The database must already exist, be an owner-controlled regular file with mode `
 The classification preparation manifest contains only private relative references and SHA-256 bindings. The parent-only preparer reads those artifacts beneath the private root, passes the complete private row only to the exact pinned classifier bytes, and emits fixed state plus digests. The classifier receives a deep-copied priority-board list through an exact classifier-local `boards` import without a process-global module or search-path change. The command line and stdout contain no raw job field, policy rule, classifier source, or verdict. On success it writes the existing classification claim schema; on a post-identity refusal it writes the separate immutable refusal marker containing only fixed state, a fixed preparation-stage enum, classifier-invocation status, and existing safe digests. It never writes exception text, paths, row fields, decision details, traceback, a classification-attempt marker, or a database value.
 
 The classification claim contains only private relative references, SHA-256 bindings, and one parent-authorized terminal enum. It contains no raw job field or policy rule. The claim path, database path, and expected claim digest are parent-bound runtime arguments; the verdict and all policy values remain absent from the command line and model request. The compact commit result omits the job identity, verdict, and policy/classifier digests. The immutable receipt exposes only public-safe digests, counts, and fixed postcondition labels.
+
+The autonomous lifecycle contains only private relative references, digests,
+fixed gate states, a provider identity, a bounded one-action call budget, and
+derived outcome references. The opaque application-context file may contain
+private applicant values, but the public runner never interprets or emits them.
+The eventual Presence adapter resolves those values outside model-visible output
+under its own reviewed contract. Terminal receipts contain only counts, digests,
+fixed states, and one of the five declared stop codes.
 
 ## Taey-facing contract
 

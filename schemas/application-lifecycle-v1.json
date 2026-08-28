@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/application-lifecycle-v1.json",
+  "title": "Autonomous application lifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_application_lifecycle_v1"},
+    "operation": {"const": "execute_autonomous_application"},
+    "provider": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$"},
+    "application_identity_sha256": {"$ref": "#/$defs/digest"},
+    "evidence": {"$ref": "#/$defs/evidence"},
+    "application_context_ref": {"$ref": "#/$defs/private_ref"},
+    "application_context_sha256": {"$ref": "#/$defs/digest"},
+    "application_context_schema": {"$ref": "#/$defs/schema_name"},
+    "maximum_one_action_calls": {"type": "integer", "minimum": 1, "maximum": 256},
+    "envelope_ref": {"$ref": "#/$defs/envelope_ref"},
+    "result_ref": {"$ref": "#/$defs/result_ref"},
+    "refusal_ref": {"$ref": "#/$defs/refusal_ref"}
+  },
+  "required": [
+    "schema",
+    "operation",
+    "provider",
+    "application_identity_sha256",
+    "evidence",
+    "application_context_ref",
+    "application_context_sha256",
+    "application_context_schema",
+    "maximum_one_action_calls",
+    "envelope_ref",
+    "result_ref",
+    "refusal_ref"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "schema_name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,127}$"},
+    "private_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*//)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "envelope_ref": {
+      "type": "string",
+      "pattern": "^application-envelopes/[^/]+/[^/]+\\.json$"
+    },
+    "result_ref": {
+      "type": "string",
+      "pattern": "^application-results/[^/]+/[^/]+\\.json$"
+    },
+    "refusal_ref": {
+      "type": "string",
+      "pattern": "^application-preparation-refusals/[^/]+/[^/]+\\.json$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "receipt_ref": {"$ref": "#/$defs/private_ref"},
+        "receipt_sha256": {"$ref": "#/$defs/digest"},
+        "receipt_schema": {"$ref": "#/$defs/schema_name"},
+        "expected_state": {"type": "string"}
+      },
+      "required": ["receipt_ref", "receipt_sha256", "receipt_schema", "expected_state"]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "discovery": {
+          "allOf": [
+            {"$ref": "#/$defs/binding"},
+            {"properties": {"expected_state": {"const": "discovered"}}}
+          ]
+        },
+        "qualification": {
+          "allOf": [
+            {"$ref": "#/$defs/binding"},
+            {"properties": {"expected_state": {"const": "qualified"}}}
+          ]
+        },
+        "deep_research": {
+          "allOf": [
+            {"$ref": "#/$defs/binding"},
+            {"properties": {"expected_state": {"const": "deep_research_complete"}}}
+          ]
+        },
+        "materials": {
+          "allOf": [
+            {"$ref": "#/$defs/binding"},
+            {"properties": {"expected_state": {"const": "materials_ready"}}}
+          ]
+        },
+        "truthful_applicant_data": {
+          "allOf": [
+            {"$ref": "#/$defs/binding"},
+            {"properties": {"expected_state": {"const": "truthful_applicant_data_ready"}}}
+          ]
+        },
+        "submission_authority": {
+          "allOf": [
+            {"$ref": "#/$defs/binding"},
+            {"properties": {"expected_state": {"const": "within_policy_and_authority"}}}
+          ]
+        }
+      },
+      "required": [
+        "discovery",
+        "qualification",
+        "deep_research",
+        "materials",
+        "truthful_applicant_data",
+        "submission_authority"
+      ]
+    }
+  }
+}

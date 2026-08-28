@@ -9,10 +9,40 @@
 | Transaction preparer | Validate an owner-private draft and exact source pairing, then create one canonical unclaimed identity |
 | Classification claim preparer | Validate one manifest-bound private policy decision against one pristine qualified row and publish one existing-schema claim or refusal |
 | `taey-apply` | Validate the paired evidence, derive canonical identity, deduplicate, persist unclassified intake, return a compact receipt |
-| Later policy stage | Decide `PASS` or `KILLED` and authorize scoring |
-| Later application stage | Any ATS or application action under its own authority |
+| Application preparer | Validate six immutable prerequisite gates and publish one single-use provider-neutral envelope |
+| Application runner | Enforce one-action receipt chaining and terminate only at exact employer confirmation or one of five declared stop boundaries |
+| Injected one-action executor | Separately reviewed Presence adapter; owns transport into Hands but no lifecycle policy |
+| Presence / Hands | Provider-specific UI mapping, exact one-action execution, and postcondition evidence |
 
 `taey-apply` owns no browser or platform UI behavior. It treats captures as signed-by-digest inputs and stops if their relationship is not exact.
+
+## Autonomous application boundary
+
+The additive application layer does not add another UI driver. A trusted parent
+freezes six exact, privacy-safe gate receipts for discovery, qualification, deep
+research, materials, truthful applicant data, and submission authority, plus the
+digest of one opaque private application context. The preparer verifies every
+receipt against the same application identity and writes one canonical `0400`
+envelope.
+
+The runner reserves the envelope digest before invoking any executor. It calls
+an injected `OneActionExecutor` protocol with only the frozen envelope identity,
+sequence number, and prior receipt digest. Every accepted outcome proves either
+one read-only observation, one mutation plus its exact postcondition, or exact
+employer confirmation. No later call is made unless the prior outcome explicitly
+authorizes it. A duplicate action/receipt, malformed outcome, or executor error
+is terminal side-effect uncertainty.
+
+Success requires a stable exact confirmation binding: matching provider and
+application identity, one exact route digest, one exact confirmation-anchor
+digest, and at least two distinct observation revisions. A routine human review
+or approval field and queue are absent. The bounded action budget is an authority
+boundary, not permission to retry.
+
+The concrete Presence transport adapter is deliberately absent until its public
+contract has completed independent review. The runner is complete against the
+protocol and does not guess an endpoint, tool name, request field, locator, or
+postcondition grammar.
 
 ## Preparation boundary
 
