@@ -89,6 +89,10 @@ The private compiler requires one exact immutable-fact/token match and freezes
 that control's untouched rendered name for postcondition validation. Every
 other origin must carry no token and continues to require exact immutable-fact
 / rendered-name equality. Prefix, fuzzy, and normalized matching are absent.
+On form capsules, the model schema offers only first-seen unique operations from
+the current mapped controls plus `halt`. On native-dialog capsules it offers the
+single next frozen chooser step plus `halt`. `select_option` is never offered
+outside a fresh options capsule.
 The compiler validates cited work-evidence keys, copies private values and paths
 from the immutable context, and writes exactly:
 

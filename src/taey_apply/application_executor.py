@@ -14,6 +14,7 @@ from .application_action_compiler import (
     CompiledGreenhouseAction,
     GreenhouseActionCompiler,
     GreenhouseDecisionContext,
+    _NATIVE_SEQUENCE,
     _ensure_seat_parent,
 )
 from .application_confirmation import EmployerConfirmation
@@ -332,7 +333,21 @@ class SingleRequestJsonTransport:
 def _decision_schema(context: GreenhouseDecisionContext) -> dict[str, Any]:
     fact_options = list(context.available_fact_keys)
     evidence_options = list(context.available_work_evidence_keys)
-    options_surface = context.surface_capsule.get("surface") == "options"
+    surface = context.surface_capsule.get("surface")
+    options_surface = surface == "options"
+    action_options: list[str] = []
+    if surface == "form":
+        seen_operations: set[str] = set()
+        for control in context.surface_capsule.get("controls", []):
+            for operation in control.get("operations", []):
+                if operation not in seen_operations:
+                    seen_operations.add(operation)
+                    action_options.append(operation)
+    elif surface == "native_dialog":
+        native_step = _NATIVE_SEQUENCE.get(context.previous_action_kind or "")
+        if native_step is not None:
+            action_options.append(native_step[0])
+    action_options.append("halt")
     work_items: dict[str, Any] = {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]{0,127}$",
@@ -347,23 +362,7 @@ def _decision_schema(context: GreenhouseDecisionContext) -> dict[str, Any]:
             "action": (
                 {"const": "select_option"}
                 if options_surface
-                else {
-                    "enum": [
-                        "focus",
-                        "fill",
-                        "scroll_combo",
-                        "open_combo",
-                        "select_option",
-                        "activate_choice",
-                        "open_upload",
-                        "chooser_location",
-                        "chooser_select_all",
-                        "chooser_type_path",
-                        "chooser_confirm",
-                        "submit",
-                        "halt",
-                    ]
-                }
+                else {"enum": action_options}
             ),
             "ref": (
                 {"type": "null"}
