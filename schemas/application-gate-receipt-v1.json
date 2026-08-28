@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/application-gate-receipt-v1.json",
+  "title": "Immutable autonomous application prerequisite gate",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_application_gate_receipt_v1"},
+    "ok": {"const": true},
+    "state": {
+      "enum": [
+        "discovered",
+        "qualified",
+        "deep_research_complete",
+        "materials_ready",
+        "truthful_applicant_data_ready",
+        "within_policy_and_authority"
+      ]
+    },
+    "application_identity_sha256": {"$ref": "#/$defs/digest"},
+    "evidence_sha256": {"$ref": "#/$defs/digest"}
+  },
+  "required": [
+    "schema",
+    "ok",
+    "state",
+    "application_identity_sha256",
+    "evidence_sha256"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

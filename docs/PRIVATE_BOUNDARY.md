@@ -19,6 +19,8 @@
 - classification attempt reservations and receipts;
 - the jobs database and state root;
 - application prerequisite evidence receipts and opaque application context;
+- application materialization manifests, source artifacts, refusals, and
+  lifecycles;
 - applicant facts, answers, resume/cover-letter paths, and employer-specific values;
 - raw job titles, companies, locations, descriptions, URLs, and account state;
 - personal profiles, preferences, filtering policy, classifier source, terminal classification values, scores, and applications.
@@ -40,6 +42,14 @@ private applicant values, but the public runner never interprets or emits them.
 The eventual Presence adapter resolves those values outside model-visible output
 under its own reviewed contract. Terminal receipts contain only counts, digests,
 fixed states, and one of the five declared stop codes.
+
+The application materializer reads one canonical `0400` manifest and only its
+bound `0400` artifacts beneath the explicit private root. Raw applicant facts,
+work claims, and policy directives live inside that private manifest and are
+copied only into the opaque `0400` application context.
+Its stdout and immutable refusal contain fixed states, counts, public IDs, and
+digests only. The public schemas define structure but contain no applicant
+value, path, employer value, or policy decision.
 
 ## Taey-facing contract
 

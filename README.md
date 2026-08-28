@@ -2,7 +2,7 @@
 
 `taey-apply` is the public application-domain state-transition boundary used by Taey. Its intake connector accepts one frozen, privately stored LinkedIn search-card capture paired with the exact selected-job capture that followed it, validates their immutable receipts, derives a stable LinkedIn job identity, and inserts one unclassified row into an existing private jobs database. Its separate classification connector applies one private-parent decision capsule to that exact qualified row. Its provider-neutral application layer verifies frozen discovery, qualification, deep-research, materials, truthful-data, and submission-authority evidence before coordinating an injected one-action executor to an exact employer confirmation.
 
-It does not search LinkedIn, implement ATS locators, traverse an accessibility tree, contain UI primitives, implement personal policy, score a person-job fit, store applicant facts, or own a private jobs database. The optional parent-only classification preparer can invoke exact private classifier bytes pinned by a private manifest; no policy rule or personal value is implemented or stored here. Application UI behavior remains owned by Presence and Hands behind a separately reviewed one-action adapter.
+It does not search LinkedIn, implement ATS locators, traverse an accessibility tree, contain UI primitives, implement personal policy, score a person-job fit, commit applicant facts to Git, expose them on stdout, or own a private jobs database. The optional parent-only classification preparer can invoke exact private classifier bytes pinned by a private manifest; no policy rule or personal value is implemented or stored in the public repository. Application UI behavior remains owned by Presence and Hands behind a separately reviewed one-action adapter.
 
 ## Current capability
 
@@ -78,6 +78,7 @@ python -P -m taey_apply.classification_prepare_cli --help
 python -P -m taey_apply.cli --help
 python -P -m taey_apply.classification_cli --help
 python -P -m taey_apply.application_prepare_cli --help
+python -P -m taey_apply.application_materialize_cli --help
 ```
 
 There are no runtime dependencies outside the Python standard library.
@@ -108,6 +109,14 @@ root, one exact lifecycle file and digest, and public seat/correlation IDs.
 The canonical mechanics and current adapter blocker are in the
 [autonomous application runbook](docs/AUTONOMOUS_APPLICATION_RUNBOOK.md).
 
+The parent-only application materializer removes hand construction from that
+boundary. One trusted private `0400` manifest binds completed discovery,
+qualification, deep-research, and materials artifacts plus canonical applicant
+facts, work evidence, and submission policy. It publishes six immutable gate
+receipts, one opaque context, and one lifecycle ready for the existing
+application preparer. It does not access UI or a database, choose a live option,
+submit, or create a human review or approval queue.
+
 ## Mechanical gates
 
 ```bash
@@ -118,6 +127,7 @@ python3 tools/validate_contract.py
 python3 tools/validate_classification.py
 python3 tools/validate_classification_preparer.py
 python3 tools/validate_application_boundary.py
+python3 tools/validate_application_materializer.py
 ```
 
 These gates validate packaging and the deterministic data boundary with generated sanitized state. They do not replace exact-SHA review, deployment, or real Taey execution receipts. The production evidence qualified for the current baseline is recorded in the [canonical runbook](docs/LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md#qualified-production-baseline).

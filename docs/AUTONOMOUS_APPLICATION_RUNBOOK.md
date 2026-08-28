@@ -21,6 +21,33 @@ its SHA-256. The lifecycle also binds one opaque `0400` application context,
 one bounded one-action call budget, and derived envelope/result/refusal refs.
 There is no routine human review or approval field and no queue.
 
+## Materialize completed evidence once
+
+Before envelope preparation, a trusted parent freezes one manifest matching
+`schemas/application-materialization-manifest-v1.json`. The manifest carries
+canonical applicant facts, work evidence, and policy directly; each completed
+stage artifact is an owner-controlled `0400` file beneath the explicit `0700`
+private root. The manifest contains no output paths: public seat and correlation
+identities derive the six receipt refs, opaque context ref, and lifecycle ref.
+
+```bash
+PYTHONPATH="$TAEY_APPLY_PUBLIC_ROOT/src" \
+  "$TAEY_APPLY_PYTHON" -P -m taey_apply.application_materialize_cli \
+  --private-root "$TAEY_APPLY_PRIVATE_ROOT" \
+  --manifest-file "$TAEY_APPLY_MATERIALIZATION_MANIFEST" \
+  --manifest-sha256 "$TAEY_APPLY_MATERIALIZATION_MANIFEST_SHA256" \
+  --seat-id "$TAEY_APPLY_SEAT_ID" \
+  --correlation-id "$TAEY_APPLY_CORRELATION_ID"
+```
+
+Success returns only counts, IDs, and digests. The private lifecycle is written
+at `application-materializations/SEAT/CORRELATION.lifecycle.json`; its SHA-256
+is the returned `lifecycle_sha256` and is ready for the existing prepare command
+below. The opaque context carries the exact fact, work-evidence, material, and
+policy bindings that a later one-action sequencer needs when comparing newly
+observed live options. The materializer does not choose an option or touch UI.
+Missing required facts stop as `missing_truthful_applicant_data`.
+
 ## Prepare once
 
 Production uses the exact reviewed checkout and explicit interpreter:
@@ -77,6 +104,7 @@ The terminal result always sets `next_mutation_authorized` to `false`.
 
 ```bash
 python3 tools/validate_application_boundary.py
+python3 tools/validate_application_materializer.py
 ```
 
 The gate uses generated private fixtures and an injected executor. It proves
