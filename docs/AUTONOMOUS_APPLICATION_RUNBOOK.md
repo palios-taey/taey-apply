@@ -175,6 +175,14 @@ Success requires an exact employer-confirmation route and anchor, one stable
 surface revision observed in at least two consecutive matched samples, the
 digest of those samples, and an exact binding to the terminal executor receipt.
 The terminal result always sets `next_mutation_authorized` to `false`.
+For a returned terminal executor outcome, its receipt digest also binds one
+owner-controlled canonical `0400` artifact matching
+`schemas/application-executor-terminal-evidence-v1.json`. The runner verifies
+the exact private ref/digest before accepting the stop. Evidence uses only the
+four fixed stages and finite reason codes; it contains no exception text or
+applicant value. If a bounded Taey decision existed, a separate canonical
+`0400` private copy is bound by ref and digest so an explicit `halt` can be
+distinguished mechanically from compiler refusal.
 
 ## Mechanical gate
 
@@ -186,5 +194,7 @@ python3 tools/validate_application_executor.py
 ```
 
 The gate uses generated private fixtures and an injected executor. It proves
-contract mechanics without a browser, account, applicant, employer, network
-request, or external mutation. It is not production evidence.
+decision-stage, compiler-stage, explicit-halt, missing/tampered evidence,
+`0400`/exclusive-write, and private-value-omission mechanics without a browser,
+account, applicant, employer, network request, or external mutation. It is not
+production evidence.

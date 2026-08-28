@@ -39,6 +39,21 @@
         {"type": "null"}
       ]
     },
+    "final_executor_evidence_ref": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^application-executor-outcomes/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"
+        },
+        {"type": "null"}
+      ]
+    },
+    "final_executor_evidence_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
     "receipt_chain_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
     "confirmation_sha256": {
       "anyOf": [
@@ -61,6 +76,8 @@
     "one_action_calls",
     "ui_mutations",
     "final_executor_receipt_sha256",
+    "final_executor_evidence_ref",
+    "final_executor_evidence_sha256",
     "receipt_chain_sha256",
     "confirmation_sha256",
     "next_mutation_authorized"

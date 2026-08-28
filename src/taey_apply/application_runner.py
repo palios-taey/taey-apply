@@ -19,6 +19,7 @@ from .application_contract import (
     load_application_envelope,
     validate_application_envelope_sources,
     validate_one_action_outcome,
+    validate_terminal_outcome_evidence,
 )
 from .contract import (
     IntakeContractError,
@@ -113,6 +114,12 @@ def _finalize(
         else None
     )
     final_executor_receipt_sha256 = outcomes[-1].receipt_sha256 if outcomes else None
+    final_executor_evidence_ref = (
+        outcomes[-1].terminal_evidence_ref if outcomes else None
+    )
+    final_executor_evidence_sha256 = (
+        outcomes[-1].terminal_evidence_sha256 if outcomes else None
+    )
     chain_sha256 = _receipt_chain_sha256(outcomes)
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -127,6 +134,8 @@ def _finalize(
         "one_action_calls": executor_calls,
         "ui_mutations": mutations,
         "final_executor_receipt_sha256": final_executor_receipt_sha256,
+        "final_executor_evidence_ref": final_executor_evidence_ref,
+        "final_executor_evidence_sha256": final_executor_evidence_sha256,
         "receipt_chain_sha256": chain_sha256,
         "confirmation_sha256": confirmation_sha256,
         "next_mutation_authorized": False,
@@ -225,6 +234,8 @@ def run_application(
             executor_calls += 1
             raw_outcome = executor(request)
             outcome = validate_one_action_outcome(raw_outcome, request)
+            if outcome.state in {"terminal_halt", "side_effect_uncertain"}:
+                validate_terminal_outcome_evidence(private_root, outcome, request)
         except Exception as exc:
             failure = _executor_failure(exc)
             return _finalize(

@@ -5,6 +5,7 @@ from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
+import stat
 import sys
 import tempfile
 from typing import Any, Mapping
@@ -18,7 +19,11 @@ from taey_apply.application_action_compiler import (  # noqa: E402
     GreenhouseDecisionContext,
     REQUIRED_HANDS_COMMIT,
 )
-from taey_apply.application_contract import OneActionRequest, load_application_envelope  # noqa: E402
+from taey_apply.application_contract import (  # noqa: E402
+    OneActionOutcome,
+    OneActionRequest,
+    load_application_envelope,
+)
 from taey_apply.application_executor import (  # noqa: E402
     ApplicationExecutorError,
     GreenhousePresenceOneActionExecutor,
@@ -27,7 +32,11 @@ from taey_apply.application_executor import (  # noqa: E402
 )
 from taey_apply.application_materializer import materialize_application_context  # noqa: E402
 from taey_apply.application_preparer import prepare_application  # noqa: E402
-from taey_apply.contract import canonical_json_bytes  # noqa: E402
+from taey_apply.contract import (  # noqa: E402
+    IntakeContractError,
+    canonical_json_bytes,
+    write_new_private_json,
+)
 from validate_application_action_compiler import (  # noqa: E402
     form_capsule,
     options_capsule,
@@ -203,7 +212,7 @@ class DecisionTransport:
 def executor(
     root: Path,
     capsule: Mapping[str, Any],
-    source: FrozenDecisionSource,
+    source: Any,
     transport: PresenceTransport,
     seat: str,
 ) -> GreenhousePresenceOneActionExecutor:
@@ -218,6 +227,27 @@ def executor(
         decision_source=source,
         presence_transport=transport,
     )
+
+
+def terminal_evidence(
+    root: Path, outcome: OneActionOutcome
+) -> tuple[Mapping[str, Any], Path]:
+    require(
+        outcome.terminal_evidence_ref is not None
+        and outcome.terminal_evidence_sha256 == outcome.receipt_sha256,
+        "terminal outcome lacks exact evidence binding",
+    )
+    path = root / str(outcome.terminal_evidence_ref)
+    raw_bytes = path.read_bytes()
+    value = json.loads(raw_bytes)
+    require(
+        raw_bytes == canonical_json_bytes(value)
+        and digest(raw_bytes) == outcome.terminal_evidence_sha256
+        and stat.S_IMODE(path.stat().st_mode) == 0o400
+        and PRIVATE_SENTINEL.encode() not in raw_bytes,
+        "terminal executor evidence is not immutable and bounded",
+    )
+    return value, path
 
 
 def success_case(
@@ -296,7 +326,27 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
         client.decide(context, event_id="event", correlation_id="correlation") == exact,
         "schema decision changed",
     )
-    require(len(transport.calls) == 1, "decision transport retried")
+    require(
+        len(transport.calls) == 1
+        and client.last_response_payload_sha256
+        == digest(
+            canonical_json_bytes(
+                {
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "role": "assistant",
+                                "content": canonical_json_bytes(exact).decode(),
+                                "tool_calls": None,
+                            },
+                        }
+                    ]
+                }
+            )
+        ),
+        "decision response digest was not retained",
+    )
     empty_tool_calls = DecisionTransport(
         canonical_json_bytes(exact).decode(), tool_calls=[]
     )
@@ -421,6 +471,20 @@ def first_error_cases(
         and terminal.stop_code == "exact_postcondition_failure",
         "observe refusal did not terminalize",
     )
+    evidence, evidence_path = terminal_evidence(root, terminal)
+    require(
+        evidence["stage"] == "presence"
+        and evidence["reason_code"] == "presence_observation_refused"
+        and isinstance(evidence["presence_response_payload_sha256"], str)
+        and len(evidence["presence_response_payload_sha256"]) == 64,
+        "Presence refusal evidence drifted",
+    )
+    try:
+        write_new_private_json(evidence_path, dict(evidence))
+    except IntakeContractError:
+        pass
+    else:
+        raise RuntimeError("terminal evidence identity was overwritten")
     try:
         refused(request)
     except ApplicationExecutorError:
@@ -444,6 +508,108 @@ def first_error_cases(
     else:
         raise RuntimeError("wrong Presence lineage was accepted")
     require(len(wrong_transport.calls) == 2, "uncertain executor retried")
+
+
+def forensic_terminal_cases(
+    root: Path, envelope: Any, envelope_sha256: str, capsule: Mapping[str, Any]
+) -> None:
+    decision_transport = DecisionTransport("not one schema decision")
+    decision_client = TaeyJsonSchemaDecisionClient(
+        endpoint_value=DECISION_ENDPOINT,
+        model_value="taey-production",
+        transport=decision_transport,
+    )
+    decision_presence = PresenceTransport(capsule)
+    decision_executor = executor(
+        root,
+        capsule,
+        decision_client,
+        decision_presence,
+        "executor-decision-refusal",
+    )
+    observed = decision_executor(
+        OneActionRequest(envelope, envelope_sha256, 1, None)
+    )
+    terminal = decision_executor(
+        OneActionRequest(envelope, envelope_sha256, 2, observed.receipt_sha256)
+    )
+    evidence, _ = terminal_evidence(root, terminal)
+    require(
+        terminal.state == "terminal_halt"
+        and evidence["stage"] == "decision"
+        and evidence["reason_code"] == "decision_source_refused"
+        and evidence["decision_response_payload_sha256"]
+        == decision_client.last_response_payload_sha256
+        and evidence["accepted_decision_ref"] is None
+        and evidence["capsule_sha256"] == digest(canonical_json_bytes(capsule))
+        and len(decision_presence.calls) == 1,
+        "decision-stage evidence did not reconstruct first error",
+    )
+
+    stale = decision("fill", ref(1), digest("stale-revision"), "full_name")
+    compiler_presence = PresenceTransport(capsule)
+    compiler_executor = executor(
+        root,
+        capsule,
+        FrozenDecisionSource(stale),
+        compiler_presence,
+        "executor-compiler-refusal",
+    )
+    observed = compiler_executor(
+        OneActionRequest(envelope, envelope_sha256, 1, None)
+    )
+    terminal = compiler_executor(
+        OneActionRequest(envelope, envelope_sha256, 2, observed.receipt_sha256)
+    )
+    evidence, _ = terminal_evidence(root, terminal)
+    decision_path = root / str(evidence["accepted_decision_ref"])
+    decision_bytes = decision_path.read_bytes()
+    require(
+        terminal.stop_code == "exact_postcondition_failure"
+        and evidence["stage"] == "compile"
+        and evidence["reason_code"] == "compiler_refused"
+        and digest(decision_bytes) == evidence["accepted_decision_sha256"]
+        and json.loads(decision_bytes) == stale
+        and stat.S_IMODE(decision_path.stat().st_mode) == 0o400
+        and evidence["capsule_sha256"] == digest(canonical_json_bytes(capsule))
+        and len(compiler_presence.calls) == 1
+        and PRIVATE_SENTINEL.encode() not in decision_bytes,
+        "compiler-stage evidence did not bind the exact accepted decision",
+    )
+
+    halt = decision("halt", None, None, None)
+    halt["stop_code"] = "unmapped_ui_or_question"
+    halt_presence = PresenceTransport(capsule)
+    halt_executor = executor(
+        root,
+        capsule,
+        FrozenDecisionSource(halt),
+        halt_presence,
+        "executor-explicit-halt",
+    )
+    observed = halt_executor(OneActionRequest(envelope, envelope_sha256, 1, None))
+    terminal = halt_executor(
+        OneActionRequest(envelope, envelope_sha256, 2, observed.receipt_sha256)
+    )
+    evidence, _ = terminal_evidence(root, terminal)
+    halt_decision_path = root / str(evidence["accepted_decision_ref"])
+    require(
+        terminal.stop_code == "unmapped_ui_or_question"
+        and evidence["stage"] == "compile"
+        and evidence["reason_code"] == "taey_explicit_halt"
+        and json.loads(halt_decision_path.read_bytes()) == halt
+        and digest(halt_decision_path.read_bytes())
+        == evidence["accepted_decision_sha256"]
+        and stat.S_IMODE(halt_decision_path.stat().st_mode) == 0o400
+        and len(halt_presence.calls) == 1,
+        "explicit Taey halt was conflated with compiler refusal",
+    )
+    try:
+        write_new_private_json(halt_decision_path, halt)
+    except IntakeContractError:
+        pass
+    else:
+        raise RuntimeError("accepted decision identity was overwritten")
 
 
 def static_boundary() -> None:
@@ -489,6 +655,9 @@ if __name__ == "__main__":
         success_case(private_root, envelope, envelope_sha256, identity, capsule)
         schema_case(identity, capsule)
         first_error_cases(private_root, envelope, envelope_sha256, capsule)
+        forensic_terminal_cases(
+            private_root, envelope, envelope_sha256, capsule
+        )
     print(
         json.dumps(
             {
@@ -505,6 +674,8 @@ if __name__ == "__main__":
                 "private_paths_in_decision_context": 0,
                 "presence_body_fields": ["display"],
                 "presence_calls_after_first_error": 0,
+                "terminal_evidence_artifacts": 4,
+                "accepted_decision_artifacts": 2,
                 "human_review_states": 0,
             },
             sort_keys=True,

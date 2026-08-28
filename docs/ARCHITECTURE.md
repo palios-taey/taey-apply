@@ -97,6 +97,15 @@ uncertainty, and the executor permanently refuses any later call. There is no
 human-review state, approval field, queue, automatic retry, model-prose parser,
 direct Hands import, or provider-field guess.
 
+Every returned terminal executor outcome is the digest of one canonical `0400`
+private evidence receipt, not an in-memory object that is discarded. The
+receipt carries only a fixed stage/reason pair, lineage digests, optional
+decision-response/capsule/Presence payload digests, and a digest/private ref to
+one exact bounded Taey decision when such a decision existed. Explicit Taey
+`halt` is distinct from compiler refusal. The runner reopens and validates both
+artifacts before accepting the outcome and binds the terminal evidence ref and
+digest into the final private result.
+
 ## Application materialization boundary
 
 The parent-only materializer accepts one canonical owner-controlled `0400`

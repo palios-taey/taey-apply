@@ -58,6 +58,7 @@ REQUIRED_FILES = {
     "pyproject.toml",
     "schemas/application-envelope-v1.json",
     "schemas/application-context-v1.json",
+    "schemas/application-executor-terminal-evidence-v1.json",
     "schemas/application-gate-receipt-v1.json",
     "schemas/employer-confirmation-v1.json",
     "schemas/greenhouse-action-decision-v1.json",
