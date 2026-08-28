@@ -97,14 +97,22 @@ uncertainty, and the executor permanently refuses any later call. There is no
 human-review state, approval field, queue, automatic retry, model-prose parser,
 direct Hands import, or provider-field guess.
 
+Every direct-vLLM response is frozen once as canonical `0400` private evidence
+immediately after the bounded HTTP response and before decision validation. The
+artifact binds seat/event/correlation lineage, request and response digests,
+and the full parsed response payload. It is separate from accepted decisions.
+Malformed envelopes, content, fields, and cross-field authority are finite
+machine classifications; none authorizes Presence or a retry.
+
 Every returned terminal executor outcome is the digest of one canonical `0400`
 private evidence receipt, not an in-memory object that is discarded. The
-receipt carries only a fixed stage/reason pair, lineage digests, optional
-decision-response/capsule/Presence payload digests, and a digest/private ref to
-one exact bounded Taey decision when such a decision existed. Explicit Taey
-`halt` is distinct from compiler refusal. The runner reopens and validates both
-artifacts before accepting the outcome and binds the terminal evidence ref and
-digest into the final private result.
+receipt carries a fixed stage/reason pair, the finite decision-rejection code,
+lineage digests, exact private response ref/digest, optional capsule/Presence
+payload digests, and a digest/private ref to one accepted bounded Taey decision
+when such a decision existed. Explicit Taey `halt` is distinct from compiler
+refusal. The runner reopens and validates all referenced artifacts before
+accepting the outcome and binds the terminal evidence ref and digest into the
+final private result.
 
 ## Application materialization boundary
 

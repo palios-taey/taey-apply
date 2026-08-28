@@ -51,9 +51,39 @@
         {"type": "null"}
       ]
     },
+    "decision_response_ref": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^application-executor-decision-responses/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"
+        },
+        {"type": "null"}
+      ]
+    },
+    "decision_response_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
     "decision_response_payload_sha256": {
       "anyOf": [
         {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "decision_rejection_code": {
+      "anyOf": [
+        {
+          "enum": [
+            "decision_transport_failure",
+            "decision_response_capture_failed",
+            "decision_response_envelope_malformed",
+            "decision_response_content_malformed",
+            "decision_fields_malformed",
+            "decision_cross_field_malformed"
+          ]
+        },
         {"type": "null"}
       ]
     },
@@ -85,7 +115,10 @@
     "reason_code",
     "accepted_decision_ref",
     "accepted_decision_sha256",
+    "decision_response_ref",
+    "decision_response_sha256",
     "decision_response_payload_sha256",
+    "decision_rejection_code",
     "capsule_sha256",
     "presence_response_payload_sha256",
     "mutation_count",

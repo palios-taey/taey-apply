@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/application-executor-decision-response-v1.json",
+  "title": "Private direct-vLLM decision response evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_application_executor_decision_response_v1"},
+    "application_identity_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "seat_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "event_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "correlation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "request_payload_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "response_payload_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "response_payload": {"type": "object"}
+  },
+  "required": [
+    "schema",
+    "application_identity_sha256",
+    "seat_id",
+    "event_id",
+    "correlation_id",
+    "request_payload_sha256",
+    "response_payload_sha256",
+    "response_payload"
+  ]
+}

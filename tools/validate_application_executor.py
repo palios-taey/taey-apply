@@ -24,11 +24,13 @@ from taey_apply.application_contract import (  # noqa: E402
     OneActionOutcome,
     OneActionRequest,
     load_application_envelope,
+    validate_terminal_outcome_evidence,
 )
 from taey_apply.application_executor import (  # noqa: E402
     ApplicationExecutorError,
     GreenhousePresenceOneActionExecutor,
     JsonHttpResponse,
+    PrivateDecisionResponseRecorder,
     TaeyJsonSchemaDecisionClient,
 )
 from taey_apply.application_materializer import materialize_application_context  # noqa: E402
@@ -185,9 +187,17 @@ class PresenceTransport:
 
 
 class DecisionTransport:
-    def __init__(self, content: str, *, tool_calls: object = None) -> None:
+    def __init__(
+        self,
+        content: object,
+        *,
+        tool_calls: object = None,
+        body: Mapping[str, Any] | None = None,
+    ) -> None:
         self.content = content
         self.tool_calls = tool_calls
+        self.body = body
+        self.last_body: Mapping[str, Any] | None = None
         self.calls: list[dict[str, Any]] = []
 
     def post(
@@ -196,7 +206,7 @@ class DecisionTransport:
         self.calls.append(
             {"endpoint": endpoint, "headers": dict(headers), "payload": dict(payload)}
         )
-        body = {
+        body = dict(self.body) if self.body is not None else {
             "choices": [
                 {
                     "finish_reason": "stop",
@@ -208,7 +218,22 @@ class DecisionTransport:
                 }
             ]
         }
+        self.last_body = body
         return JsonHttpResponse(200, {}, body, digest(canonical_json_bytes(body)))
+
+
+def decision_client(
+    root: Path, seat: str, transport: DecisionTransport
+) -> TaeyJsonSchemaDecisionClient:
+    return TaeyJsonSchemaDecisionClient(
+        endpoint_value=DECISION_ENDPOINT,
+        model_value="taey-production",
+        transport=transport,
+        response_recorder=PrivateDecisionResponseRecorder(
+            private_root_value=str(root),
+            seat_id_value=seat,
+        ),
+    )
 
 
 def executor(
@@ -313,14 +338,10 @@ def success_case(
     )
 
 
-def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
+def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
     exact = decision("fill", ref(1), str(capsule["revision"]), "full_name")
     transport = DecisionTransport(canonical_json_bytes(exact).decode())
-    client = TaeyJsonSchemaDecisionClient(
-        endpoint_value=DECISION_ENDPOINT,
-        model_value="taey-production",
-        transport=transport,
-    )
+    client = decision_client(root, "schema-exact", transport)
     context = GreenhouseDecisionContext(
         identity, capsule, ("full_name",), ("automation",), "observe_form"
     )
@@ -352,10 +373,8 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
     empty_tool_calls = DecisionTransport(
         canonical_json_bytes(exact).decode(), tool_calls=[]
     )
-    empty_tool_calls_client = TaeyJsonSchemaDecisionClient(
-        endpoint_value=DECISION_ENDPOINT,
-        model_value="taey-production",
-        transport=empty_tool_calls,
+    empty_tool_calls_client = decision_client(
+        root, "schema-empty-tools", empty_tool_calls
     )
     require(
         empty_tool_calls_client.decide(
@@ -371,10 +390,8 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
         canonical_json_bytes(exact).decode(),
         tool_calls=[{"id": "call_1", "type": "function"}],
     )
-    nonempty_tool_calls_client = TaeyJsonSchemaDecisionClient(
-        endpoint_value=DECISION_ENDPOINT,
-        model_value="taey-production",
-        transport=nonempty_tool_calls,
+    nonempty_tool_calls_client = decision_client(
+        root, "schema-nonempty-tools", nonempty_tool_calls
     )
     try:
         nonempty_tool_calls_client.decide(
@@ -386,6 +403,11 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
         require(
             exc.failure_code == "unmapped_ui_or_question",
             "nonempty tool-call refusal code drifted",
+        )
+        require(
+            exc.decision_rejection_code
+            == "decision_response_envelope_malformed",
+            "nonempty tool-call rejection class drifted",
         )
     else:
         raise RuntimeError("nonempty tool-call list was accepted")
@@ -411,11 +433,7 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
     options = options_capsule(identity, option_revision, ref(2), ref(3))
     option_value = decision("select_option", None, option_revision, "country")
     option_transport = DecisionTransport(canonical_json_bytes(option_value).decode())
-    option_client = TaeyJsonSchemaDecisionClient(
-        endpoint_value=DECISION_ENDPOINT,
-        model_value="taey-production",
-        transport=option_transport,
-    )
+    option_client = decision_client(root, "schema-option", option_transport)
     option_context = GreenhouseDecisionContext(
         identity,
         options,
@@ -441,10 +459,10 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
         and option_schema["properties"]["expected_option_name"] == {"type": "null"},
         "private option-resolution schema widened",
     )
-    prose = TaeyJsonSchemaDecisionClient(
-        endpoint_value=DECISION_ENDPOINT,
-        model_value="taey-production",
-        transport=DecisionTransport("choose the first field"),
+    prose = decision_client(
+        root,
+        "schema-prose",
+        DecisionTransport("choose the first field"),
     )
     try:
         prose.decide(
@@ -453,6 +471,11 @@ def schema_case(identity: str, capsule: Mapping[str, Any]) -> None:
     except ApplicationExecutorError as exc:
         require(
             exc.failure_code == "unmapped_ui_or_question", "prose refusal code drifted"
+        )
+        require(
+            exc.decision_rejection_code
+            == "decision_response_content_malformed",
+            "prose rejection class drifted",
         )
     else:
         raise RuntimeError("model prose was accepted")
@@ -512,57 +535,125 @@ def first_error_cases(
     require(len(wrong_transport.calls) == 2, "uncertain executor retried")
 
 
-def forensic_terminal_cases(
-    root: Path, envelope: Any, envelope_sha256: str, capsule: Mapping[str, Any]
+def assert_decision_rejection(
+    root: Path,
+    envelope: Any,
+    envelope_sha256: str,
+    capsule: Mapping[str, Any],
+    *,
+    seat: str,
+    transport: DecisionTransport,
+    expected_rejection_code: str,
 ) -> None:
-    decision_transport = DecisionTransport("not one schema decision")
-    decision_client = TaeyJsonSchemaDecisionClient(
-        endpoint_value=DECISION_ENDPOINT,
-        model_value="taey-production",
-        transport=decision_transport,
+    client = decision_client(root, seat, transport)
+    presence = PresenceTransport(capsule)
+    instance = executor(root, capsule, client, presence, seat)
+    observed = instance(OneActionRequest(envelope, envelope_sha256, 1, None))
+    terminal_request = OneActionRequest(
+        envelope, envelope_sha256, 2, observed.receipt_sha256
     )
-    decision_presence = PresenceTransport(capsule)
-    decision_executor = executor(
-        root,
-        capsule,
-        decision_client,
-        decision_presence,
-        "executor-decision-refusal",
-    )
-    observed = decision_executor(
-        OneActionRequest(envelope, envelope_sha256, 1, None)
-    )
-    terminal = decision_executor(
-        OneActionRequest(envelope, envelope_sha256, 2, observed.receipt_sha256)
-    )
+    terminal = instance(terminal_request)
+    validate_terminal_outcome_evidence(root, terminal, terminal_request)
     evidence, _ = terminal_evidence(root, terminal)
+    response_path = root / str(evidence["decision_response_ref"])
+    response_bytes = response_path.read_bytes()
+    response_evidence = json.loads(response_bytes)
     require(
         terminal.state == "terminal_halt"
         and evidence["stage"] == "decision"
         and evidence["reason_code"] == "decision_source_refused"
+        and evidence["decision_rejection_code"] == expected_rejection_code
+        and evidence["decision_response_ref"] == client.last_response_ref
+        and evidence["decision_response_sha256"] == client.last_response_sha256
         and evidence["decision_response_payload_sha256"]
-        == decision_client.last_response_payload_sha256
+        == client.last_response_payload_sha256
         and evidence["accepted_decision_ref"] is None
         and evidence["capsule_sha256"] == digest(canonical_json_bytes(capsule))
-        and len(decision_presence.calls) == 1,
-        "decision-stage evidence did not reconstruct first error",
+        and response_bytes == canonical_json_bytes(response_evidence)
+        and digest(response_bytes) == evidence["decision_response_sha256"]
+        and stat.S_IMODE(response_path.stat().st_mode) == 0o400
+        and response_evidence["schema"]
+        == "taey_apply_application_executor_decision_response_v1"
+        and response_evidence["application_identity_sha256"]
+        == envelope.application_identity_sha256
+        and response_evidence["seat_id"] == seat
+        and response_evidence["event_id"] == f"{seat}-event.s2"
+        and response_evidence["correlation_id"] == f"{seat}-correlation.s2"
+        and response_evidence["request_payload_sha256"]
+        == digest(canonical_json_bytes(transport.calls[0]["payload"]))
+        and response_evidence["response_payload_sha256"]
+        == digest(canonical_json_bytes(transport.last_body))
+        and response_evidence["response_payload"] == transport.last_body
+        and len(presence.calls) == 1
+        and PRIVATE_SENTINEL.encode() not in response_bytes
+        and str(root).encode() not in response_bytes,
+        f"{expected_rejection_code} did not preserve exact first-error evidence",
     )
+    try:
+        write_new_private_json(response_path, response_evidence)
+    except IntakeContractError:
+        pass
+    else:
+        raise RuntimeError("decision response identity was overwritten")
+
+
+def forensic_terminal_cases(
+    root: Path, envelope: Any, envelope_sha256: str, capsule: Mapping[str, Any]
+) -> None:
+    incomplete = decision("fill", ref(1), str(capsule["revision"]), "full_name")
+    incomplete.pop("stop_code")
+    cross_field = decision("fill", None, str(capsule["revision"]), "full_name")
+    rejection_cases = (
+        (
+            "executor-envelope-refusal",
+            DecisionTransport(None, body={"choices": []}),
+            "decision_response_envelope_malformed",
+        ),
+        (
+            "executor-content-refusal",
+            DecisionTransport("not one schema decision"),
+            "decision_response_content_malformed",
+        ),
+        (
+            "executor-fields-refusal",
+            DecisionTransport(canonical_json_bytes(incomplete).decode()),
+            "decision_fields_malformed",
+        ),
+        (
+            "executor-cross-field-refusal",
+            DecisionTransport(canonical_json_bytes(cross_field).decode()),
+            "decision_cross_field_malformed",
+        ),
+    )
+    for seat, transport, rejection_code in rejection_cases:
+        assert_decision_rejection(
+            root,
+            envelope,
+            envelope_sha256,
+            capsule,
+            seat=seat,
+            transport=transport,
+            expected_rejection_code=rejection_code,
+        )
 
     stale = decision("fill", ref(1), digest("stale-revision"), "full_name")
+    stale_transport = DecisionTransport(canonical_json_bytes(stale).decode())
     compiler_presence = PresenceTransport(capsule)
     compiler_executor = executor(
         root,
         capsule,
-        FrozenDecisionSource(stale),
+        decision_client(root, "executor-compiler-refusal", stale_transport),
         compiler_presence,
         "executor-compiler-refusal",
     )
     observed = compiler_executor(
         OneActionRequest(envelope, envelope_sha256, 1, None)
     )
-    terminal = compiler_executor(
-        OneActionRequest(envelope, envelope_sha256, 2, observed.receipt_sha256)
+    compiler_request = OneActionRequest(
+        envelope, envelope_sha256, 2, observed.receipt_sha256
     )
+    terminal = compiler_executor(compiler_request)
+    validate_terminal_outcome_evidence(root, terminal, compiler_request)
     evidence, _ = terminal_evidence(root, terminal)
     decision_path = root / str(evidence["accepted_decision_ref"])
     decision_bytes = decision_path.read_bytes()
@@ -573,6 +664,9 @@ def forensic_terminal_cases(
         and digest(decision_bytes) == evidence["accepted_decision_sha256"]
         and json.loads(decision_bytes) == stale
         and stat.S_IMODE(decision_path.stat().st_mode) == 0o400
+        and isinstance(evidence["decision_response_ref"], str)
+        and evidence["decision_response_sha256"] is not None
+        and evidence["decision_rejection_code"] is None
         and evidence["capsule_sha256"] == digest(canonical_json_bytes(capsule))
         and len(compiler_presence.calls) == 1
         and PRIVATE_SENTINEL.encode() not in decision_bytes,
@@ -581,18 +675,21 @@ def forensic_terminal_cases(
 
     halt = decision("halt", None, None, None)
     halt["stop_code"] = "unmapped_ui_or_question"
+    halt_transport = DecisionTransport(canonical_json_bytes(halt).decode())
     halt_presence = PresenceTransport(capsule)
     halt_executor = executor(
         root,
         capsule,
-        FrozenDecisionSource(halt),
+        decision_client(root, "executor-explicit-halt", halt_transport),
         halt_presence,
         "executor-explicit-halt",
     )
     observed = halt_executor(OneActionRequest(envelope, envelope_sha256, 1, None))
-    terminal = halt_executor(
-        OneActionRequest(envelope, envelope_sha256, 2, observed.receipt_sha256)
+    halt_request = OneActionRequest(
+        envelope, envelope_sha256, 2, observed.receipt_sha256
     )
+    terminal = halt_executor(halt_request)
+    validate_terminal_outcome_evidence(root, terminal, halt_request)
     evidence, _ = terminal_evidence(root, terminal)
     halt_decision_path = root / str(evidence["accepted_decision_ref"])
     require(
@@ -603,6 +700,9 @@ def forensic_terminal_cases(
         and digest(halt_decision_path.read_bytes())
         == evidence["accepted_decision_sha256"]
         and stat.S_IMODE(halt_decision_path.stat().st_mode) == 0o400
+        and isinstance(evidence["decision_response_ref"], str)
+        and evidence["decision_response_sha256"] is not None
+        and evidence["decision_rejection_code"] is None
         and len(halt_presence.calls) == 1,
         "explicit Taey halt was conflated with compiler refusal",
     )
@@ -722,7 +822,7 @@ if __name__ == "__main__":
             required_complete=False,
         )
         success_case(private_root, envelope, envelope_sha256, identity, capsule)
-        schema_case(identity, capsule)
+        schema_case(private_root, identity, capsule)
         first_error_cases(private_root, envelope, envelope_sha256, capsule)
         forensic_terminal_cases(
             private_root, envelope, envelope_sha256, capsule
@@ -745,8 +845,10 @@ if __name__ == "__main__":
                 "presence_calls_after_first_error": 0,
                 "same_origin_endpoint_pairs_accepted": 0,
                 "distinct_endpoint_pairs_constructed": 1,
-                "terminal_evidence_artifacts": 4,
+                "terminal_evidence_artifacts": 7,
                 "accepted_decision_artifacts": 2,
+                "decision_response_artifacts": 11,
+                "malformed_response_classes_proven": 4,
                 "human_review_states": 0,
             },
             sort_keys=True,

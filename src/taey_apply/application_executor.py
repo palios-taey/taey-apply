@@ -18,7 +18,9 @@ from .application_action_compiler import (
 )
 from .application_confirmation import EmployerConfirmation
 from .application_contract import (
-    ApplicationContractError,
+    ApplicationDecisionContractError,
+    DECISION_REJECTION_CODES,
+    DECISION_RESPONSE_EVIDENCE_SCHEMA,
     OneActionOutcome,
     OneActionRequest,
     TERMINAL_EVIDENCE_SCHEMA,
@@ -56,11 +58,23 @@ _STOP_CODES = frozenset(
 
 
 class ApplicationExecutorError(RuntimeError):
-    def __init__(self, failure_code: str, message: str) -> None:
+    def __init__(
+        self,
+        failure_code: str,
+        message: str,
+        *,
+        decision_rejection_code: str | None = None,
+    ) -> None:
         super().__init__(message)
         if failure_code not in _STOP_CODES:
             raise ValueError("unsupported application executor failure")
+        if (
+            decision_rejection_code is not None
+            and decision_rejection_code not in DECISION_REJECTION_CODES
+        ):
+            raise ValueError("unsupported decision rejection code")
         self.failure_code = failure_code
+        self.decision_rejection_code = decision_rejection_code
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +83,13 @@ class JsonHttpResponse:
     headers: Mapping[str, str]
     payload: Mapping[str, Any]
     payload_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionResponseCapture:
+    reference: str
+    artifact_sha256: str
+    response_payload_sha256: str
 
 
 class JsonTransport(Protocol):
@@ -81,6 +102,18 @@ class JsonTransport(Protocol):
     ) -> JsonHttpResponse: ...
 
 
+class DecisionResponseRecorder(Protocol):
+    def record(
+        self,
+        *,
+        application_identity_sha256: str,
+        event_id: str,
+        correlation_id: str,
+        request_payload_sha256: str,
+        response: JsonHttpResponse,
+    ) -> DecisionResponseCapture: ...
+
+
 class StructuredDecisionSource(Protocol):
     def decide(
         self,
@@ -89,6 +122,94 @@ class StructuredDecisionSource(Protocol):
         event_id: str,
         correlation_id: str,
     ) -> Mapping[str, Any]: ...
+
+
+class PrivateDecisionResponseRecorder:
+    def __init__(self, *, private_root_value: str, seat_id_value: object) -> None:
+        try:
+            self._private_root = validate_private_root(private_root_value)
+            self._seat_id = validate_public_id(seat_id_value, "seat ID")
+        except IntakeContractError as exc:
+            raise ApplicationExecutorError(
+                "policy_or_authority_boundary",
+                "decision response recorder boundary is invalid",
+            ) from exc
+
+    def record(
+        self,
+        *,
+        application_identity_sha256: str,
+        event_id: str,
+        correlation_id: str,
+        request_payload_sha256: str,
+        response: JsonHttpResponse,
+    ) -> DecisionResponseCapture:
+        try:
+            application_identity_sha256 = _digest(
+                application_identity_sha256, "application identity"
+            )
+            request_payload_sha256 = _digest(
+                request_payload_sha256, "decision request"
+            )
+            response_payload_sha256 = _digest(
+                response.payload_sha256, "decision response"
+            )
+            if response_payload_sha256 != sha256_hex(
+                canonical_json_bytes(response.payload)
+            ):
+                raise ApplicationExecutorError(
+                    "side_effect_uncertainty", "decision response digest differs"
+                )
+            event_id = validate_public_id(event_id, "event ID")
+            correlation_id = validate_public_id(correlation_id, "correlation ID")
+            reference = (
+                "application-executor-decision-responses/"
+                f"{self._seat_id}/{correlation_id}.json"
+            )
+            parent = _ensure_seat_parent(
+                self._private_root,
+                "application-executor-decision-responses",
+                self._seat_id,
+            )
+            path = resolve_private_reference(
+                self._private_root,
+                reference,
+                "application-executor-decision-responses",
+                must_exist=False,
+            )
+            path = validate_new_receipt_path(path, self._private_root)
+            if path.parent != parent:
+                raise IntakeContractError(
+                    "unsafe_private_path", "decision response parent differs"
+                )
+            raw_bytes = write_new_private_json(
+                path,
+                {
+                    "schema": DECISION_RESPONSE_EVIDENCE_SCHEMA,
+                    "application_identity_sha256": application_identity_sha256,
+                    "seat_id": self._seat_id,
+                    "event_id": event_id,
+                    "correlation_id": correlation_id,
+                    "request_payload_sha256": request_payload_sha256,
+                    "response_payload_sha256": response_payload_sha256,
+                    "response_payload": dict(response.payload),
+                },
+            )
+        except (
+            ApplicationActionCompilerError,
+            ApplicationExecutorError,
+            IntakeContractError,
+        ) as exc:
+            raise ApplicationExecutorError(
+                "side_effect_uncertainty",
+                "decision response evidence write failed",
+                decision_rejection_code="decision_response_capture_failed",
+            ) from exc
+        return DecisionResponseCapture(
+            reference=reference,
+            artifact_sha256=sha256_hex(raw_bytes),
+            response_payload_sha256=response_payload_sha256,
+        )
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -311,6 +432,7 @@ class TaeyJsonSchemaDecisionClient:
         endpoint_value: object,
         model_value: object,
         transport: JsonTransport,
+        response_recorder: DecisionResponseRecorder,
     ) -> None:
         self._endpoint = _endpoint(
             endpoint_value,
@@ -328,11 +450,35 @@ class TaeyJsonSchemaDecisionClient:
             )
         self._model = model_value
         self._transport = transport
+        self._response_recorder = response_recorder
+        self._last_response_ref: str | None = None
+        self._last_response_sha256: str | None = None
         self._last_response_payload_sha256: str | None = None
+        self._last_rejection_code: str | None = None
+
+    @property
+    def last_response_ref(self) -> str | None:
+        return self._last_response_ref
+
+    @property
+    def last_response_sha256(self) -> str | None:
+        return self._last_response_sha256
 
     @property
     def last_response_payload_sha256(self) -> str | None:
         return self._last_response_payload_sha256
+
+    @property
+    def last_rejection_code(self) -> str | None:
+        return self._last_rejection_code
+
+    def _reject(self, code: str, message: str) -> None:
+        self._last_rejection_code = code
+        raise ApplicationExecutorError(
+            "unmapped_ui_or_question",
+            message,
+            decision_rejection_code=code,
+        )
 
     def decide(
         self,
@@ -341,7 +487,10 @@ class TaeyJsonSchemaDecisionClient:
         event_id: str,
         correlation_id: str,
     ) -> Mapping[str, Any]:
+        self._last_response_ref = None
+        self._last_response_sha256 = None
         self._last_response_payload_sha256 = None
+        self._last_rejection_code = "decision_transport_failure"
         safe_input = {
             "schema": DECISION_INPUT_SCHEMA,
             "application_identity_sha256": context.application_identity_sha256,
@@ -386,16 +535,36 @@ class TaeyJsonSchemaDecisionClient:
                 },
             },
         }
-        response = self._transport.post(
-            self._endpoint,
-            headers={
-                "Content-Type": "application/json",
-                "X-Taey-Event-Id": event_id,
-                "X-Taey-Correlation-Id": correlation_id,
-            },
-            payload=payload,
-        )
+        request_payload_sha256 = sha256_hex(canonical_json_bytes(payload))
+        try:
+            response = self._transport.post(
+                self._endpoint,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Taey-Event-Id": event_id,
+                    "X-Taey-Correlation-Id": correlation_id,
+                },
+                payload=payload,
+            )
+        except ApplicationExecutorError as exc:
+            raise ApplicationExecutorError(
+                exc.failure_code,
+                "Taey decision transport failed",
+                decision_rejection_code="decision_transport_failure",
+            ) from exc
         self._last_response_payload_sha256 = response.payload_sha256
+        self._last_rejection_code = "decision_response_capture_failed"
+        capture = self._response_recorder.record(
+            application_identity_sha256=context.application_identity_sha256,
+            event_id=event_id,
+            correlation_id=correlation_id,
+            request_payload_sha256=request_payload_sha256,
+            response=response,
+        )
+        self._last_response_ref = capture.reference
+        self._last_response_sha256 = capture.artifact_sha256
+        self._last_response_payload_sha256 = capture.response_payload_sha256
+        self._last_rejection_code = None
         choices = response.payload.get("choices")
         choice = choices[0] if isinstance(choices, list) and len(choices) == 1 else None
         message = choice.get("message") if isinstance(choice, Mapping) else None
@@ -409,25 +578,39 @@ class TaeyJsonSchemaDecisionClient:
                 tool_calls is None
                 or (isinstance(tool_calls, list) and len(tool_calls) == 0)
             )
-            or not isinstance(content, str)
-            or not content
         ):
-            raise ApplicationExecutorError(
-                "unmapped_ui_or_question",
+            self._reject(
+                "decision_response_envelope_malformed",
                 "Taey did not return one terminal schema-constrained decision",
+            )
+        if not isinstance(content, str) or not content:
+            self._reject(
+                "decision_response_content_malformed",
+                "Taey decision content is absent",
             )
         try:
             decision = _json_object(content.encode("utf-8"), "Taey schema decision")
         except ApplicationExecutorError as exc:
+            self._last_rejection_code = "decision_response_content_malformed"
             raise ApplicationExecutorError(
                 "unmapped_ui_or_question",
                 "Taey schema decision is not one exact JSON object",
+                decision_rejection_code="decision_response_content_malformed",
             ) from exc
         if frozenset(decision) != frozenset(schema["required"]):
-            raise ApplicationExecutorError(
-                "unmapped_ui_or_question", "Taey schema decision fields are not exact"
+            self._reject(
+                "decision_fields_malformed",
+                "Taey schema decision fields are not exact",
             )
-        return decision
+        try:
+            return _accepted_decision(decision)
+        except ApplicationDecisionContractError as exc:
+            self._last_rejection_code = exc.rejection_code
+            raise ApplicationExecutorError(
+                "unmapped_ui_or_question",
+                "Taey schema decision violates its bounded authority",
+                decision_rejection_code=exc.rejection_code,
+            ) from exc
 
 
 def _digest(value: object, context: str) -> str:
@@ -519,13 +702,62 @@ class GreenhousePresenceOneActionExecutor:
             ) from exc
         return reference, sha256_hex(raw_bytes)
 
-    def _decision_response_payload_sha256(self) -> str | None:
-        value = getattr(
+    def _decision_response_evidence(
+        self, *, attempted: bool
+    ) -> tuple[str | None, str | None, str | None, str | None]:
+        if not attempted:
+            return None, None, None, None
+        reference = getattr(self._decision_source, "last_response_ref", None)
+        artifact_sha256 = getattr(
+            self._decision_source, "last_response_sha256", None
+        )
+        payload_sha256 = getattr(
             self._decision_source, "last_response_payload_sha256", None
         )
-        if value is None:
-            return None
-        return _digest(value, "Taey decision response")
+        rejection_code = getattr(
+            self._decision_source, "last_rejection_code", None
+        )
+        if rejection_code is not None and rejection_code not in DECISION_REJECTION_CODES:
+            raise ApplicationExecutorError(
+                "side_effect_uncertainty", "decision rejection evidence is invalid"
+            )
+        if rejection_code == "decision_transport_failure":
+            if any(
+                value is not None
+                for value in (reference, artifact_sha256, payload_sha256)
+            ):
+                raise ApplicationExecutorError(
+                    "side_effect_uncertainty",
+                    "decision transport evidence is inconsistent",
+                )
+            return None, None, None, rejection_code
+        if rejection_code == "decision_response_capture_failed":
+            if reference is not None or artifact_sha256 is not None:
+                raise ApplicationExecutorError(
+                    "side_effect_uncertainty",
+                    "decision capture failure evidence is inconsistent",
+                )
+            return (
+                None,
+                None,
+                _digest(payload_sha256, "Taey decision response"),
+                rejection_code,
+            )
+        if (
+            not isinstance(reference, str)
+            or not reference
+            or artifact_sha256 is None
+            or payload_sha256 is None
+        ):
+            raise ApplicationExecutorError(
+                "side_effect_uncertainty", "decision response evidence is absent"
+            )
+        return (
+            reference,
+            _digest(artifact_sha256, "Taey decision response artifact"),
+            _digest(payload_sha256, "Taey decision response"),
+            rejection_code,
+        )
 
     def _persist_accepted_decision(
         self,
@@ -534,10 +766,7 @@ class GreenhousePresenceOneActionExecutor:
     ) -> tuple[str | None, str | None, Mapping[str, Any] | None]:
         if decision is None:
             return None, None, None
-        try:
-            exact_decision = _accepted_decision(decision)
-        except ApplicationContractError:
-            return None, None, None
+        exact_decision = _accepted_decision(decision)
         reference, decision_sha256 = self._private_artifact(
             bucket="application-executor-decisions",
             identity=correlation_id,
@@ -561,7 +790,10 @@ class GreenhousePresenceOneActionExecutor:
         reason_code: str,
         accepted_decision_ref: str | None = None,
         accepted_decision_sha256: str | None = None,
+        decision_response_ref: str | None = None,
+        decision_response_sha256: str | None = None,
         decision_response_payload_sha256: str | None = None,
+        decision_rejection_code: str | None = None,
         capsule_sha256: str | None = None,
         presence_response_payload_sha256: str | None = None,
     ) -> OneActionOutcome:
@@ -595,9 +827,12 @@ class GreenhousePresenceOneActionExecutor:
             "reason_code": reason_code,
             "accepted_decision_ref": accepted_decision_ref,
             "accepted_decision_sha256": accepted_decision_sha256,
+            "decision_response_ref": decision_response_ref,
+            "decision_response_sha256": decision_response_sha256,
             "decision_response_payload_sha256": (
                 decision_response_payload_sha256
             ),
+            "decision_rejection_code": decision_rejection_code,
             "capsule_sha256": capsule_sha256,
             "presence_response_payload_sha256": (
                 presence_response_payload_sha256
@@ -827,6 +1062,17 @@ class GreenhousePresenceOneActionExecutor:
             decision_ref, decision_sha256, exact_decision = (
                 self._persist_accepted_decision(decision, correlation_id)
             )
+            (
+                response_ref,
+                response_sha256,
+                response_payload_sha256,
+                rejection_code,
+            ) = self._decision_response_evidence(attempted=decision_attempted)
+            if rejection_code is not None:
+                raise ApplicationExecutorError(
+                    "side_effect_uncertainty",
+                    "accepted decision carries rejection evidence",
+                )
             explicit_halt = (
                 exact_decision is not None
                 and exact_decision["action"] == "halt"
@@ -842,25 +1088,33 @@ class GreenhousePresenceOneActionExecutor:
                 ),
                 accepted_decision_ref=decision_ref,
                 accepted_decision_sha256=decision_sha256,
-                decision_response_payload_sha256=(
-                    self._decision_response_payload_sha256()
-                    if decision_attempted
-                    else None
-                ),
+                decision_response_ref=response_ref,
+                decision_response_sha256=response_sha256,
+                decision_response_payload_sha256=response_payload_sha256,
                 capsule_sha256=capsule_sha256,
             )
         except ApplicationExecutorError as exc:
+            (
+                response_ref,
+                response_sha256,
+                response_payload_sha256,
+                rejection_code,
+            ) = self._decision_response_evidence(attempted=decision_attempted)
+            if exc.decision_rejection_code != rejection_code:
+                raise ApplicationExecutorError(
+                    "side_effect_uncertainty",
+                    "decision rejection lineage differs",
+                ) from exc
             return self._terminal_outcome(
                 request,
                 failure_code=exc.failure_code,
                 action_id=None,
                 stage="decision",
                 reason_code="decision_source_refused",
-                decision_response_payload_sha256=(
-                    self._decision_response_payload_sha256()
-                    if decision_attempted
-                    else None
-                ),
+                decision_response_ref=response_ref,
+                decision_response_sha256=response_sha256,
+                decision_response_payload_sha256=response_payload_sha256,
+                decision_rejection_code=rejection_code,
                 capsule_sha256=capsule_sha256,
             )
         try:
@@ -901,6 +1155,7 @@ __all__ = [
     "GreenhousePresenceOneActionExecutor",
     "JsonHttpResponse",
     "JsonTransport",
+    "PrivateDecisionResponseRecorder",
     "SingleRequestJsonTransport",
     "StructuredDecisionSource",
     "TaeyJsonSchemaDecisionClient",

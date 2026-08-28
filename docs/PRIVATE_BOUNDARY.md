@@ -44,12 +44,16 @@ derived outcome references. The opaque application-context file may contain
 private applicant values, but the public runner never interprets or emits them.
 The eventual Presence adapter resolves those values outside model-visible output
 under its own reviewed contract. Terminal executor evidence contains only
-lineage, finite stage/reason enums, digests, private relative refs, fixed state,
-and one of the five declared stop codes. A separately frozen accepted decision
-contains only the bounded decision schema's operation, opaque ref/revision,
-fact/evidence key names, and stop code. Neither artifact contains exception text
-or applicant values. The final private result binds the exact terminal evidence
-ref and digest; compact stdout does not expose either private ref.
+lineage, finite stage/reason/rejection enums, digests, private relative refs,
+fixed state, and one of the five declared stop codes. The direct-vLLM response
+is frozen before validation in a distinct owner-controlled `0400` artifact. Its
+request was built only from the public surface capsule, application digest, and
+fact/evidence key names; raw applicant values and paths never enter it. A
+separately frozen accepted decision contains only the bounded decision schema's
+operation, opaque ref/revision, fact/evidence key names, and stop code. None of
+these artifacts contains exception text. The final private result binds the
+exact terminal evidence ref and digest; compact stdout exposes no private ref
+or response payload.
 
 The application materializer reads one canonical `0400` manifest and only its
 bound `0400` artifacts beneath the explicit private root. Raw applicant facts,
