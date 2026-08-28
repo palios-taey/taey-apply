@@ -32,6 +32,7 @@ from taey_apply.application_executor import (  # noqa: E402
     JsonHttpResponse,
     PrivateDecisionResponseRecorder,
     TaeyJsonSchemaDecisionClient,
+    _decision_schema,
 )
 from taey_apply.application_materializer import materialize_application_context  # noqa: E402
 from taey_apply.application_preparer import prepare_application  # noqa: E402
@@ -43,6 +44,8 @@ from taey_apply.contract import (  # noqa: E402
 )
 from validate_application_action_compiler import (  # noqa: E402
     form_capsule,
+    native_capsule,
+    native_ref,
     options_capsule,
     ref,
 )
@@ -421,6 +424,8 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
         response_format["type"] == "json_schema"
         and response_format["json_schema"]["strict"] is True
         and "uniqueItems" not in work_evidence_schema
+        and response_format["json_schema"]["schema"]["properties"]["action"]
+        == {"enum": ["fill", "halt"]}
         and payload["chat_template_kwargs"] == {"enable_thinking": False}
         and "tools" not in payload,
         "native schema contract drifted",
@@ -459,6 +464,64 @@ def schema_case(root: Path, identity: str, capsule: Mapping[str, Any]) -> None:
         and option_schema["properties"]["expected_option_name"] == {"type": "null"},
         "private option-resolution schema widened",
     )
+    repeated_operations = form_capsule(
+        identity,
+        digest("executor-repeated-operations"),
+        [
+            {
+                "ref": ref(4),
+                "name": "First mapped control",
+                "role": "entry",
+                "operations": ["focus", "fill"],
+            },
+            {
+                "ref": ref(5),
+                "name": "Second mapped control",
+                "role": "combo box",
+                "operations": ["focus", "open_combo"],
+            },
+        ],
+        required_complete=False,
+    )
+    repeated_schema = _decision_schema(
+        GreenhouseDecisionContext(
+            identity,
+            repeated_operations,
+            ("full_name",),
+            (),
+            "observe_form",
+        )
+    )
+    require(
+        repeated_schema["properties"]["action"]
+        == {"enum": ["focus", "fill", "open_combo", "halt"]},
+        "form operations were not exact, unique, and first-seen",
+    )
+    native_steps = (
+        ("open_upload", "chooser_location", "chooser_widget"),
+        ("chooser_location", "chooser_select_all", "location_entry"),
+        ("chooser_select_all", "chooser_type_path", "location_entry"),
+        ("chooser_type_path", "chooser_confirm", "open_button"),
+    )
+    for number, (previous, expected, mapped_key) in enumerate(native_steps, start=1):
+        native_schema = _decision_schema(
+            GreenhouseDecisionContext(
+                identity,
+                native_capsule(
+                    identity,
+                    digest(f"executor-native-{number}"),
+                    mapped_key,
+                    native_ref(number),
+                ),
+                (),
+                (),
+                previous,
+            )
+        )
+        require(
+            native_schema["properties"]["action"] == {"enum": [expected, "halt"]},
+            "native action schema exceeded the evidenced sequence",
+        )
     prose = decision_client(
         root,
         "schema-prose",

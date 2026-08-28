@@ -54,6 +54,12 @@ verifies the selected keys, copies the private bytes from the context, and
 writes one owner-controlled `0400` Hands action plus the exact Presence manifest
 for that turn.
 
+The model-facing action schema contains only operations evidenced by the current
+surface. Form operations retain canonical control order and are deduplicated;
+native-dialog authority is the single next step in the frozen chooser sequence.
+`halt` remains available, while `select_option` is exposed only by a fresh
+options capsule.
+
 The compiler preserves the one-action native chooser sequence. An exact
 `Country` / `combo box` origin must carry one nonempty unique public
 `semantic_token` for every current option. The compiler matches the immutable
