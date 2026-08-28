@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a provider-neutral parent-only materializer that compiles trusted frozen
+  discovery, qualification, research, materials, applicant-fact, work-evidence,
+  and policy sources into six immutable gates, one opaque private context, and
+  one autonomous lifecycle without UI, database, submission, or human review.
 - Add provider-neutral autonomous application lifecycle, frozen-envelope,
   one-action runner, and exact employer-confirmation contracts behind a
   deliberately unbound executor protocol.

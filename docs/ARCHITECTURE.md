@@ -10,6 +10,7 @@
 | Classification claim preparer | Validate one manifest-bound private policy decision against one pristine qualified row and publish one existing-schema claim or refusal |
 | `taey-apply` | Validate the paired evidence, derive canonical identity, deduplicate, persist unclassified intake, return a compact receipt |
 | Application preparer | Validate six immutable prerequisite gates and publish one single-use provider-neutral envelope |
+| Application materializer | Compile completed private evidence into six gates, one opaque context, and one lifecycle |
 | Application runner | Enforce one-action receipt chaining and terminate only at exact employer confirmation or one of five declared stop boundaries |
 | Injected one-action executor | Separately reviewed Presence adapter; owns transport into Hands but no lifecycle policy |
 | Presence / Hands | Provider-specific UI mapping, exact one-action execution, and postcondition evidence |
@@ -44,6 +45,29 @@ The concrete Presence transport adapter is deliberately absent until its public
 contract has completed independent review. The runner is complete against the
 protocol and does not guess an endpoint, tool name, request field, locator, or
 postcondition grammar.
+
+## Application materialization boundary
+
+The parent-only materializer accepts one canonical owner-controlled `0400`
+manifest beneath the private root. The manifest binds completed discovery,
+qualification, deep-research, and materials artifacts by relative reference,
+content digest, kind, media type, and terminal state. The same immutable
+manifest carries canonical applicant facts, work evidence, and submission
+policy under the application identity, eliminating three intermediate files.
+
+The materializer reads every source without mutation, requires exact owner-only
+mode and digest, and publishes six exact `0400` gate receipts, one canonical
+opaque context, and one lifecycle that the existing application preparer can
+consume unchanged. The context preserves private fact and evidence values so a
+later Taey step can compare a newly observed live question or option set against
+truthful evidence. It never selects a dynamic option itself. An absent required
+fact or work claim stops as `missing_truthful_applicant_data`; absent submission
+authority stops as `policy_or_authority_boundary`.
+
+The materializer owns no browser, ATS provider grammar, database, submission,
+routine human review, approval field, or queue. A live question that has no
+exact answer in the frozen context remains a downstream terminal
+`missing_truthful_applicant_data` event, not permission to guess.
 
 ## Preparation boundary
 
