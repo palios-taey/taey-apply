@@ -13,7 +13,7 @@
 | Application materializer | Compile completed private evidence into six gates, one opaque context, and one lifecycle |
 | Application runner | Enforce one-action receipt chaining and terminate only at exact employer confirmation or one of five declared stop boundaries |
 | Runtime action compiler | Validate one Taey decision against the current bounded surface, copy exact private values/artifacts from the immutable context, and freeze one Presence-owned action |
-| Injected one-action executor | Separately reviewed Presence adapter; owns transport into Hands but no lifecycle policy |
+| Injected one-action executor | Stateful public adapter; owns one schema decision and one reviewed Presence transaction per runner call, but no UI or lifecycle policy |
 | Presence / Hands | Provider-specific UI mapping, exact one-action execution, and postcondition evidence |
 
 `taey-apply` owns no browser or platform UI behavior. It treats captures as signed-by-digest inputs and stops if their relationship is not exact.
@@ -52,22 +52,43 @@ artifact path, locator, or primitive. The compiler verifies the selected keys,
 copies the private bytes from the context, and writes one owner-controlled
 `0400` Hands action plus the exact Presence manifest for that turn.
 
-The compiler preserves the one-action native chooser sequence and accepts an
-option only from the immediately current options capsule. An unsupported
-question or action stops as `unmapped_ui_or_question`; an absent exact value or
-artifact stops as `missing_truthful_applicant_data`; a stale capsule or missing
-postcondition proof stops before any file is written. There is no human review,
-approval, queue, automatic retry, or generic field map.
+The compiler preserves the one-action native chooser sequence and resolves an
+option privately only when exactly one control in the immediately current
+options capsule has a name equal to the cited fact. Taey receives the fact key,
+not its value, and supplies neither an option ref nor an option name. An
+unsupported question, absent match, duplicate match, or action stops as
+`unmapped_ui_or_question`; an absent exact value or artifact stops as
+`missing_truthful_applicant_data`; a stale capsule or missing postcondition
+proof stops before any file is written. There is no human review, approval,
+queue, automatic retry, or generic field map.
 
-Presence main `77921e87876cfbe6cf3bef5a5570e8ff47a99698` owns the reviewed
-`greenhouse-ats-ui` profile and its raw `POST /v1/greenhouse-ats/one-action`
-transaction route; Hands `043a45e3414c02bb7805d2ddf12eb6ce02ee7889` owns
-execution. The direct route returns the raw validated terminal tool object and
-stops after the first refusal. A separately reviewed injected executor may bind
-that route to the provider-neutral runner. The generic chat-completions response
-is model-authored final text and is not accepted as a machine receipt. The
-runner and compiler do not parse model prose, shell into Hands, or read a hidden
+The reviewed Presence `greenhouse-ats-ui` profile owns the raw
+`POST /v1/greenhouse-ats/one-action` transaction route; Hands
+`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` owns execution. Production must pin
+an exact reviewed Presence checkout that exposes that contract. The direct
+route returns the raw validated terminal tool object and stops after the first
+refusal. A separately reviewed injected executor may bind that route to the
+provider-neutral runner. The generic chat-completions response is
+model-authored final text and is not accepted as a machine receipt. The runner
+and compiler do not parse model prose, shell into Hands, or read a hidden
 receipt path.
+
+`GreenhousePresenceOneActionExecutor` is the concrete binding. Its initial
+runner call compiles only `observe_form`; every later call gives Taey the exact
+bounded capsule, the prior action kind, and only the available fact/evidence
+key names. Native vLLM `json_schema` generation runs with thinking disabled and
+no tools. The adapter validates the exact decision, publishes one compiler
+action/manifest, and makes one POST to the reviewed Presence route with exact
+seat/event/correlation/profile headers and a display-only body. It validates
+the echoed response lineage and converts the bounded receipt, next capsule, or
+employer confirmation directly into `OneActionOutcome`.
+
+Decision failure occurs before action publication. Compiler failure occurs
+before Presence. A read-only observation refusal becomes one terminal halt. A
+missing or malformed response after a possible mutation is side-effect
+uncertainty, and the executor permanently refuses any later call. There is no
+human-review state, approval field, queue, automatic retry, model-prose parser,
+direct Hands import, or provider-field guess.
 
 ## Application materialization boundary
 
@@ -111,10 +132,10 @@ private frozen action.
 
 Submit compilation additionally requires
 `surface_capsule.required_controls_complete == true`. Hands
-`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` emits that Boolean and Presence
-`77921e87876cfbe6cf3bef5a5570e8ff47a99698` validates and relays it. The
-compiler still refuses Submit when the proof is absent or false and never
-infers completeness from optional fields or action history.
+`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` emits that Boolean from its exact
+required-control proof, and the reviewed Presence contract validates and relays
+it. The compiler does not infer completeness from optional fields or from
+action history.
 
 ## Preparation boundary
 

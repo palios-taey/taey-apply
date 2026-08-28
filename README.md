@@ -58,12 +58,15 @@ of one stable surface, bound to the terminal executor receipt
 + terminal immutable result; no later mutation authority
 ```
 
-The public runner contains no concrete transport endpoint or tool name. Its
-`OneActionExecutor` protocol is the only integration seam. The reviewed
-Presence Greenhouse profile and raw one-action route are merged, and the
-compiler now writes their exact private action/manifest input. A reviewed
-executor binding between that route and the provider-neutral runner remains to
-be landed; model-authored final chat text is not a receipt transport.
+The provider-neutral runner still depends only on its `OneActionExecutor`
+protocol. The concrete `GreenhousePresenceOneActionExecutor` binds that seam to
+the reviewed Presence Greenhouse route. It asks Taey for one native
+`json_schema` decision over only the bounded current surface plus available
+fact/evidence keys, invokes the compiler once, and sends exactly the lineage
+headers plus `{"display":":N"}` to Presence. It consumes only the raw machine
+object; model-authored prose is never a decision or receipt transport. For a
+fresh dropdown, Taey cites the fact key and the private compiler resolves
+exactly one current option match without disclosing or guessing the value.
 
 The private parent owns, reviews, and pins its policy artifacts. The parent-only preparer constructs the claim mechanically; the separate commit connector proves claim-to-row persistence. Neither proves the semantic correctness of the private policy decision.
 
@@ -81,6 +84,7 @@ python -P -m taey_apply.cli --help
 python -P -m taey_apply.classification_cli --help
 python -P -m taey_apply.application_prepare_cli --help
 python -P -m taey_apply.application_materialize_cli --help
+python -P -m taey_apply.application_execute_cli --help
 ```
 
 There are no runtime dependencies outside the Python standard library.

@@ -24,6 +24,7 @@ taey-prepare-linkedin-classification = "taey_apply.classification_prepare_cli:ma
 taey-linkedin-classification = "taey_apply.classification_cli:main"
 taey-materialize-application = "taey_apply.application_materialize_cli:main"
 taey-prepare-application = "taey_apply.application_prepare_cli:main"
+taey-run-application = "taey_apply.application_execute_cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

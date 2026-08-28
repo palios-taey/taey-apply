@@ -50,7 +50,7 @@ def native_ref(number: int) -> str:
 def decision(
     action: str,
     surface_revision: str,
-    control_ref: str,
+    control_ref: str | None,
     *,
     fact_key: str | None = None,
     option_name: str | None = None,
@@ -219,7 +219,9 @@ def expect_failure(
 
 
 def success_case(root: Path) -> None:
-    def add_country(manifest_value: dict[str, Any], sources: dict[str, dict[str, Any]]) -> None:
+    def add_country(
+        manifest_value: dict[str, Any], sources: dict[str, dict[str, Any]]
+    ) -> None:
         sources["facts"]["country"] = {
             "value": "United States",
             "evidence_sha256": digest("runtime:country"),
@@ -370,13 +372,12 @@ def success_case(root: Path) -> None:
         decision(
             "select_option",
             option_revision,
-            option_ref,
+            None,
             fact_key="country",
-            option_name="United States",
         ),
     )
     if action["action"]["expected_option_name"] != "United States":
-        raise RuntimeError("fresh exact option was not compiled")
+        raise RuntimeError("private exact option was not resolved")
 
     upload_ref = ref(4)
     upload_revision = digest("upload-revision")
@@ -479,7 +480,16 @@ def success_case(root: Path) -> None:
 
 
 def refusal_cases(root: Path) -> int:
-    source_path, source_sha256, identity = fixture(root, "refusal")
+    def add_country(
+        manifest_value: dict[str, Any], sources: dict[str, dict[str, Any]]
+    ) -> None:
+        sources["facts"]["country"] = {
+            "value": "United States",
+            "evidence_sha256": digest("refusal:country"),
+        }
+        manifest_value["applicant_facts"] = sources["facts"]
+
+    source_path, source_sha256, identity = fixture(root, "refusal", add_country)
     materialized = materialize_application_context(
         private_root_value=root,
         manifest_path_value=source_path,
@@ -519,6 +529,46 @@ def refusal_cases(root: Path) -> int:
             correlation_id_value=f"{seat}-initial",
             surface_capsule=None,
             decision=None,
+        )
+        return instance
+
+    def ready_options_compiler(seat: str) -> GreenhouseActionCompiler:
+        instance = ready_compiler(seat)
+        combo_revision = digest(f"{seat}:combo")
+        combo_ref = ref(30)
+        instance.compile(
+            OneActionRequest(
+                envelope,
+                envelope_sha256,
+                2,
+                digest("receipt:1"),
+            ),
+            event_id_value=f"{seat}-open-event",
+            correlation_id_value=f"{seat}-open",
+            surface_capsule=form_capsule(
+                identity,
+                combo_revision,
+                [
+                    {
+                        "ref": combo_ref,
+                        "name": "Country",
+                        "role": "combo box",
+                        "operations": ["open_combo"],
+                        "has_semantic_value": False,
+                        "combo_safety": {
+                            "geometry": "contained_by_active_document",
+                            "refusal": None,
+                            "scroll_frontier": False,
+                        },
+                    }
+                ],
+            ),
+            decision=decision(
+                "open_combo",
+                combo_revision,
+                combo_ref,
+                fact_key="country",
+            ),
         )
         return instance
 
@@ -588,6 +638,38 @@ def refusal_cases(root: Path) -> int:
         "policy_or_authority_boundary",
     )
     failures += 1
+
+    option_revision = digest("refusal-options")
+    zero_match = options_capsule(identity, option_revision, ref(30), ref(31))
+    zero_match["controls"][0]["name"] = "Canada"
+    duplicate_match = options_capsule(identity, option_revision, ref(30), ref(32))
+    duplicate_match["controls"].append(
+        {
+            "ref": ref(33),
+            "name": "United States",
+            "role": "menu item",
+            "operations": ["select_option"],
+        }
+    )
+    for seat, options in (
+        ("option-zero-match", zero_match),
+        ("option-duplicate-match", duplicate_match),
+    ):
+        expect_failure(
+            ready_options_compiler(seat),
+            envelope,
+            envelope_sha256,
+            3,
+            options,
+            decision(
+                "select_option",
+                option_revision,
+                None,
+                fact_key="country",
+            ),
+            "unmapped_ui_or_question",
+        )
+        failures += 1
     return failures
 
 

@@ -29,6 +29,7 @@ jobs:
           taey-linkedin-classification --help
           taey-materialize-application --help
           taey-prepare-application --help
+          taey-run-application --help
       - name: Transaction preparer gate
         run: python3 tools/validate_preparer.py
       - name: Contract gate
@@ -43,6 +44,8 @@ jobs:
         run: python3 tools/validate_application_materializer.py
       - name: Greenhouse application action compiler gate
         run: python3 tools/validate_application_action_compiler.py
+      - name: Greenhouse autonomous executor gate
+        run: python3 tools/validate_application_executor.py
       - name: Build wheel
         run: python3 -m pip wheel . --no-deps --wheel-dir dist
       - name: Secret scan

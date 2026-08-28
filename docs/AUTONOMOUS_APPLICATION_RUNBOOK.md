@@ -81,10 +81,12 @@ Each later call accepts:
 - fresh explicit event and correlation IDs.
 
 The decision carries no applicant value or artifact path. Taey cites the exact
-current ref/revision and a fact key for text, combo, option, or choice actions.
-The compiler verifies current allowed operations, requires an exact fresh option
-name for `select_option`, validates cited work-evidence keys, copies private
-values and paths from the immutable context, and writes exactly:
+current ref/revision and a fact key for text, combo, or choice actions. On a
+fresh options capsule, Taey cites only `select_option`, the revision, and a fact
+key; ref and option name remain null. The private compiler requires exactly one
+current option whose exact name equals the immutable private fact. It validates
+cited work-evidence keys, copies private values and paths from the immutable
+context, and writes exactly:
 
 ```text
 PRIVATE_ROOT/actions/SEAT/CORRELATION.json
@@ -100,27 +102,53 @@ unmapped question, wrong fresh option, native chooser order mismatch, or missing
 artifact is terminal. There is no human review, approval, queue, retry, dynamic
 generic mapping, endpoint, network request, shell, or direct Hands import.
 
-Submit compilation requires the bounded Hands/Presence capsule to carry exactly
-`required_controls_complete: true`. Hands
-`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` emits that proof and Presence
-`77921e87876cfbe6cf3bef5a5570e8ff47a99698` validates and relays it. The
-compiler stops before writing a Submit action when the proof is absent or false.
+Submit remains mechanically closed unless the bounded Hands/Presence capsule
+contains exactly `required_controls_complete: true`. Hands
+`043a45e3414c02bb7805d2ddf12eb6ce02ee7889` computes, exposes, and rechecks that
+proof, and the reviewed Presence contract validates and relays it. The compiler
+stops before writing a Submit action when the proof is absent or false.
 
-## Execute through one reviewed adapter
+## Execute through the reviewed adapter
 
 `application_runner.run_application` accepts an injected
 `OneActionExecutor`. The executor receives one `OneActionRequest` and returns
 one `OneActionOutcome`; the runner contains no transport configuration.
 
-Presence main `77921e87876cfbe6cf3bef5a5570e8ff47a99698` exposes the reviewed
+An exact reviewed Presence checkout must expose the
 `POST /v1/greenhouse-ats/one-action` route. It accepts an exact display-only
 body under the `greenhouse-ats-ui` tool profile, performs the opaque
 observe/operate pair, returns the raw terminal tool object, and stops after the
-first refusal. A separately reviewed `OneActionExecutor` adapter may bind that
-route to the runner; this compiler does not perform transport. Generic
-chat-completions model prose is never a validated `surface_capsule` or
-`employer_confirmation`. Do not substitute prose parsing, an unreviewed
-endpoint, shell command, direct Hands import, or hidden receipt-path read.
+first refusal. `GreenhousePresenceOneActionExecutor` binds that route to the
+runner. The first call compiles the read-only observation. Each later call
+obtains one native schema-constrained Taey decision from the current bounded
+capsule, publishes one frozen action/manifest, and invokes Presence once using
+exact identity headers and a display-only body. Only fact/evidence key names
+reach Taey; applicant values and artifact paths remain private and are copied
+by the compiler after the decision. Generic model prose is never a decision,
+`surface_capsule`, receipt, or `employer_confirmation`.
+
+Production invokes the installed executable with explicit values; it loads no
+environment file and has no endpoint default:
+
+```bash
+taey-run-application \
+  --private-root "$TAEY_APPLY_PRIVATE_ROOT" \
+  --envelope-file "$TAEY_APPLY_ENVELOPE_FILE" \
+  --envelope-sha256 "$TAEY_APPLY_ENVELOPE_SHA256" \
+  --seat-id "$TAEY_APPLY_SEAT_ID" \
+  --display "$TAEY_APPLY_DISPLAY" \
+  --hands-commit "$TAEY_APPLY_HANDS_COMMIT" \
+  --event-id "$TAEY_APPLY_EVENT_ID" \
+  --correlation-id "$TAEY_APPLY_CORRELATION_ID" \
+  --taey-decision-endpoint "$TAEY_APPLY_TAEY_DECISION_ENDPOINT" \
+  --taey-model "$TAEY_APPLY_TAEY_MODEL" \
+  --presence-endpoint "$TAEY_APPLY_PRESENCE_ENDPOINT"
+```
+
+Every identity is single-use. Any missing truthful value, unmapped surface,
+stale ref/revision, malformed schema decision, Presence lineage mismatch, or
+side-effect uncertainty terminates the executor. There is no review or
+approval queue and no retry path.
 
 For each accepted call the runner requires:
 
@@ -150,6 +178,7 @@ The terminal result always sets `next_mutation_authorized` to `false`.
 python3 tools/validate_application_boundary.py
 python3 tools/validate_application_materializer.py
 python3 tools/validate_application_action_compiler.py
+python3 tools/validate_application_executor.py
 ```
 
 The gate uses generated private fixtures and an injected executor. It proves
