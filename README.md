@@ -64,9 +64,13 @@ the reviewed Presence Greenhouse route. It asks Taey for one native
 `json_schema` decision over only the bounded current surface plus available
 fact/evidence keys, invokes the compiler once, and sends exactly the lineage
 headers plus `{"display":":N"}` to Presence. It consumes only the raw machine
-object; model-authored prose is never a decision or receipt transport. For a
-fresh dropdown, Taey cites the fact key and the private compiler resolves
-exactly one current option match without disclosing or guessing the value.
+object; model-authored prose is never a decision or receipt transport. For an
+exact Country combo, the reviewed Hands capsule carries one unique public
+semantic token beside each untouched rendered option name. Taey cites the fact
+key, and the private compiler requires one exact token match before freezing
+the selected rendered name for postcondition validation. Every other combo
+continues to require exact rendered-name equality. There is no prefix, fuzzy,
+or normalized fallback.
 
 The private parent owns, reviews, and pins its policy artifacts. The parent-only preparer constructs the claim mechanically; the separate commit connector proves claim-to-row persistence. Neither proves the semantic correctness of the private policy decision.
 

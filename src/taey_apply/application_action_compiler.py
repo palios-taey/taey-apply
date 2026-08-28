@@ -39,12 +39,13 @@ DECISION_SCHEMA = "taey_apply_greenhouse_action_decision_v1"
 FROZEN_ACTION_SCHEMA = "ats_greenhouse_frozen_action_v1"
 PRESENCE_MANIFEST_SCHEMA = "taey_greenhouse_ats_private_manifest_v1"
 SURFACE_SCHEMA = "ats_greenhouse_next_action_surface_v1"
-REQUIRED_HANDS_COMMIT = "043a45e3414c02bb7805d2ddf12eb6ce02ee7889"
+REQUIRED_HANDS_COMMIT = "3218faae41aad580da82cd396808ac72e118174e"
 
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _DISPLAY_RE = re.compile(r":[1-9][0-9]{0,2}")
 _REF_RE = re.compile(r"(?:r_[0-9a-f]{32}|nd1_[0-9a-f]{64})")
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{0,127}")
+_SEMANTIC_TOKEN_RE = re.compile(r"\S(?:.*\S)?", flags=re.ASCII)
 _DECISION_KEYS = frozenset(
     {
         "schema",
@@ -118,6 +119,7 @@ _CONTROL_KEYS = frozenset(
         "artifact_slot",
         "boundary",
         "combo_safety",
+        "semantic_token",
     }
 )
 _FORM_OPERATIONS = frozenset(
@@ -412,6 +414,16 @@ def _validated_control(value: object, *, options: bool) -> dict[str, Any]:
         raise ApplicationActionCompilerError(
             "exact_postcondition_failure", "fresh option operation is invalid"
         )
+    if "semantic_token" in value:
+        semantic_token = value["semantic_token"]
+        if (
+            not options
+            or not isinstance(semantic_token, str)
+            or _SEMANTIC_TOKEN_RE.fullmatch(semantic_token) is None
+        ):
+            raise ApplicationActionCompilerError(
+                "exact_postcondition_failure", "surface semantic token is invalid"
+            )
     result = dict(value)
     result["operations"] = operations
     for key in ("is_empty", "has_semantic_value"):
@@ -529,9 +541,31 @@ def _validated_surface_capsule(
             raise ApplicationActionCompilerError(
                 "unmapped_ui_or_question", "fresh options are absent"
             )
-        capsule["controls"] = [
+        exact_controls = [
             _validated_control(item, options=True) for item in controls
         ]
+        country_semantic_origin = (
+            origin["name"] == "Country" and origin["role"] == "combo box"
+        )
+        semantic_tokens = [
+            control["semantic_token"]
+            for control in exact_controls
+            if "semantic_token" in control
+        ]
+        if country_semantic_origin:
+            if len(semantic_tokens) != len(exact_controls) or len(
+                semantic_tokens
+            ) != len(set(semantic_tokens)):
+                raise ApplicationActionCompilerError(
+                    "exact_postcondition_failure",
+                    "country option semantic tokens are incomplete or duplicate",
+                )
+        elif semantic_tokens:
+            raise ApplicationActionCompilerError(
+                "exact_postcondition_failure",
+                "semantic tokens exceed the options origin contract",
+            )
+        capsule["controls"] = exact_controls
         capsule["origin"] = dict(origin)
     else:
         expected = _CAPSULE_COMMON_KEYS | {"mapped"}
@@ -985,10 +1019,16 @@ class GreenhouseActionCompiler:
                     "missing_truthful_applicant_data",
                     "fresh option lacks an exact truthful value",
                 )
+            match_key = (
+                "semantic_token"
+                if capsule["origin"]["name"] == "Country"
+                and capsule["origin"]["role"] == "combo box"
+                else "name"
+            )
             matches = [
                 control
                 for control in capsule["controls"]
-                if control["name"] == value
+                if control[match_key] == value
             ]
             if len(matches) != 1:
                 raise ApplicationActionCompilerError(
@@ -996,12 +1036,13 @@ class GreenhouseActionCompiler:
                     "fresh options do not contain one exact truthful match",
                 )
             ref = str(matches[0]["ref"])
+            expected_option_name = str(matches[0]["name"])
             return {
                 "kind": "select_option",
                 "ref": ref,
                 "revision": revision,
                 "combo_ref": capsule["origin"]["combo_ref"],
-                "expected_option_name": value,
+                "expected_option_name": expected_option_name,
             }
         ref = str(decision["ref"])
         if surface == "native_dialog":

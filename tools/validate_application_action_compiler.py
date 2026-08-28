@@ -96,7 +96,20 @@ def options_capsule(
     revision: str,
     combo_ref: str,
     option_ref: str,
+    *,
+    rendered_name: str = "United States +1",
+    semantic_token: object = "United States",
+    origin_name: str = "Country",
+    origin_role: str = "combo box",
 ) -> dict[str, Any]:
+    option = {
+        "ref": option_ref,
+        "name": rendered_name,
+        "role": "menu item",
+        "operations": ["select_option"],
+    }
+    if semantic_token is not ...:
+        option["semantic_token"] = semantic_token
     return {
         "schema": "ats_greenhouse_next_action_surface_v1",
         "provider": "greenhouse",
@@ -104,18 +117,11 @@ def options_capsule(
         "surface": "options",
         "revision": revision,
         "source_surface_sha256": digest(f"surface:{revision}"),
-        "controls": [
-            {
-                "ref": option_ref,
-                "name": "United States",
-                "role": "menu item",
-                "operations": ["select_option"],
-            }
-        ],
+        "controls": [option],
         "origin": {
             "combo_ref": combo_ref,
-            "name": "Country",
-            "role": "combo box",
+            "name": origin_name,
+            "role": origin_role,
             "form_revision": digest("form-before-options"),
             "match_count": 1,
         },
@@ -376,8 +382,8 @@ def success_case(root: Path) -> None:
             fact_key="country",
         ),
     )
-    if action["action"]["expected_option_name"] != "United States":
-        raise RuntimeError("private exact option was not resolved")
+    if action["action"]["expected_option_name"] != "United States +1":
+        raise RuntimeError("semantic option did not preserve its rendered name")
 
     upload_ref = ref(4)
     upload_revision = digest("upload-revision")
@@ -650,21 +656,53 @@ def refusal_cases(root: Path) -> int:
     )
     failures += 1
 
+    form_with_token = form_capsule(
+        identity,
+        revision,
+        [dict(surface["controls"][0], semantic_token="United States")],
+    )
+    expect_failure(
+        ready_compiler("semantic-token-on-form"),
+        envelope,
+        envelope_sha256,
+        2,
+        form_with_token,
+        decision("focus", revision, control_ref, fact_key="full_name"),
+        "exact_postcondition_failure",
+    )
+    failures += 1
+
     option_revision = digest("refusal-options")
-    zero_match = options_capsule(identity, option_revision, ref(30), ref(31))
-    zero_match["controls"][0]["name"] = "Canada"
+    zero_match = options_capsule(
+        identity,
+        option_revision,
+        ref(30),
+        ref(31),
+        rendered_name="Canada +1",
+        semantic_token="Canada",
+    )
+    prefix_match = options_capsule(
+        identity,
+        option_revision,
+        ref(30),
+        ref(34),
+        rendered_name="United States of America +1",
+        semantic_token="United States of America",
+    )
     duplicate_match = options_capsule(identity, option_revision, ref(30), ref(32))
     duplicate_match["controls"].append(
         {
             "ref": ref(33),
-            "name": "United States",
+            "name": "United States +01",
             "role": "menu item",
             "operations": ["select_option"],
+            "semantic_token": "United States",
         }
     )
-    for seat, options in (
-        ("option-zero-match", zero_match),
-        ("option-duplicate-match", duplicate_match),
+    for seat, options, expected in (
+        ("option-zero-match", zero_match, "unmapped_ui_or_question"),
+        ("option-prefix-match", prefix_match, "unmapped_ui_or_question"),
+        ("option-duplicate-match", duplicate_match, "exact_postcondition_failure"),
     ):
         expect_failure(
             ready_options_compiler(seat),
@@ -678,9 +716,97 @@ def refusal_cases(root: Path) -> int:
                 None,
                 fact_key="country",
             ),
-            "unmapped_ui_or_question",
+            expected,
         )
         failures += 1
+
+    for seat, semantic_token in (
+        ("option-missing-token", ...),
+        ("option-null-token", None),
+        ("option-empty-token", ""),
+        ("option-leading-space-token", " United States"),
+        ("option-newline-token", "United\nStates"),
+    ):
+        malformed = options_capsule(
+            identity,
+            option_revision,
+            ref(30),
+            ref(40),
+            semantic_token=semantic_token,
+        )
+        expect_failure(
+            ready_options_compiler(seat),
+            envelope,
+            envelope_sha256,
+            3,
+            malformed,
+            decision(
+                "select_option",
+                option_revision,
+                None,
+                fact_key="country",
+            ),
+            "exact_postcondition_failure",
+        )
+        failures += 1
+
+    non_country_with_token = options_capsule(
+        identity,
+        option_revision,
+        ref(30),
+        ref(41),
+        origin_name="Location",
+    )
+    expect_failure(
+        ready_options_compiler("option-token-wrong-origin"),
+        envelope,
+        envelope_sha256,
+        3,
+        non_country_with_token,
+        decision(
+            "select_option",
+            option_revision,
+            None,
+            fact_key="country",
+        ),
+        "exact_postcondition_failure",
+    )
+    failures += 1
+
+    literal_options = options_capsule(
+        identity,
+        option_revision,
+        ref(30),
+        ref(42),
+        rendered_name="United States",
+        semantic_token=...,
+        origin_name="Location",
+    )
+    literal_compiler = ready_options_compiler("option-literal-origin")
+    literal_compiler.compile(
+        OneActionRequest(
+            envelope,
+            envelope_sha256,
+            3,
+            digest("receipt:2"),
+        ),
+        event_id_value="option-literal-origin-event",
+        correlation_id_value="option-literal-origin-action",
+        surface_capsule=literal_options,
+        decision=decision(
+            "select_option",
+            option_revision,
+            None,
+            fact_key="country",
+        ),
+    )
+    literal_action = frozen_action(
+        root,
+        "option-literal-origin",
+        "option-literal-origin-action",
+    )
+    if literal_action["action"]["expected_option_name"] != "United States":
+        raise RuntimeError("non-Country option stopped using exact rendered-name matching")
     return failures
 
 
@@ -718,11 +844,16 @@ if __name__ == "__main__":
         json.dumps(
             {
                 "fixture_cases": 1 + failures,
+                "country_rendered_name_frozen": True,
+                "country_semantic_token_match_exact": True,
                 "duplicate_work_evidence_keys_accepted": 0,
                 "frozen_action_kinds": 11,
                 "human_review_states": 0,
                 "network_calls": 0,
+                "non_country_literal_match_exact": True,
+                "prefix_or_fuzzy_fallbacks": 0,
                 "production_mutations": 0,
+                "semantic_token_invalid_accepted": 0,
                 "status": "PASS",
                 "submit_requires_upstream_required_controls_complete": True,
             },
