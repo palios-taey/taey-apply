@@ -46,11 +46,13 @@ The runtime compiler is additive and provider-specific. Its initial call emits
 only `observe_form`. Every later call requires one exact current
 `ats_greenhouse_next_action_surface_v1` capsule, one exact Taey decision, the
 prior Hands event hash, and the immutable application context. Taey supplies
-only the current ref/revision, an allowed operation, fact/evidence keys, and a
-fresh exact option name where applicable. It never supplies an applicant value,
-artifact path, locator, or primitive. The compiler verifies the selected keys,
-copies the private bytes from the context, and writes one owner-controlled
-`0400` Hands action plus the exact Presence manifest for that turn.
+only an allowed operation, the current revision, fact/evidence keys, and the
+current ref for non-option actions. For a fresh options capsule, ref and option
+name remain null and the private compiler resolves one exact match. Taey never
+supplies an applicant value, artifact path, locator, or primitive. The compiler
+verifies the selected keys, copies the private bytes from the context, and
+writes one owner-controlled `0400` Hands action plus the exact Presence manifest
+for that turn.
 
 The compiler preserves the one-action native chooser sequence and resolves an
 option privately only when exactly one control in the immediately current
