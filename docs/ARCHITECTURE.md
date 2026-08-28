@@ -80,7 +80,7 @@ field map.
 
 The reviewed Presence `greenhouse-ats-ui` profile owns the raw
 `POST /v1/greenhouse-ats/one-action` transaction route; Hands
-`ff01cc29290e31a28699104ef8e67013572813da` owns execution. Production must pin
+`4171a6cc700128d0d9d1107e8a91221a8ea6a1c1` owns execution. Production must pin
 an exact reviewed Presence checkout that exposes that contract. The direct
 route returns the raw validated terminal tool object and stops after the first
 refusal. A separately reviewed injected executor may bind that route to the
@@ -170,7 +170,7 @@ private frozen action.
 
 Submit compilation additionally requires
 `surface_capsule.required_controls_complete == true`. Hands
-`ff01cc29290e31a28699104ef8e67013572813da` emits that Boolean from its exact
+`4171a6cc700128d0d9d1107e8a91221a8ea6a1c1` emits that Boolean from its exact
 required-control proof, and the reviewed Presence contract validates and relays
 it. The compiler does not infer completeness from optional fields or from
 action history.

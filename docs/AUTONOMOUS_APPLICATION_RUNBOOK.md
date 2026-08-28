@@ -114,7 +114,7 @@ generic mapping, endpoint, network request, shell, or direct Hands import.
 
 Submit remains mechanically closed unless the bounded Hands/Presence capsule
 contains exactly `required_controls_complete: true`. Hands
-`ff01cc29290e31a28699104ef8e67013572813da` computes, exposes, and rechecks that
+`4171a6cc700128d0d9d1107e8a91221a8ea6a1c1` computes, exposes, and rechecks that
 proof, and the reviewed Presence contract validates and relays it. The compiler
 stops before writing a Submit action when the proof is absent or false.
 
