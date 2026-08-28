@@ -149,6 +149,8 @@ taey-run-application \
   --presence-endpoint "$TAEY_APPLY_PRESENCE_ENDPOINT"
 ```
 
+The CLI refuses decision and Presence endpoints that share one URL origin.
+
 Every identity is single-use. Any missing truthful value, unmapped surface,
 stale ref/revision, malformed schema decision, Presence lineage mismatch, or
 side-effect uncertainty terminates the executor. There is no review or
