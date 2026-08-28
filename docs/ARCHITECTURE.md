@@ -35,9 +35,10 @@ is terminal side-effect uncertainty.
 
 Success requires a stable exact confirmation binding: matching provider and
 application identity, one exact route digest, one exact confirmation-anchor
-digest, and at least two distinct observation revisions. A routine human review
-or approval field and queue are absent. The bounded action budget is an authority
-boundary, not permission to retry.
+digest, at least two consecutive matched samples of one stable surface revision,
+the samples digest, and the exact terminal executor receipt. A routine human
+review or approval field and queue are absent. The bounded action budget is an
+authority boundary, not permission to retry.
 
 The concrete Presence transport adapter is deliberately absent until its public
 contract has completed independent review. The runner is complete against the

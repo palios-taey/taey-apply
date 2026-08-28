@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 import stat
 import subprocess
@@ -15,7 +16,11 @@ from typing import Any
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SOURCE_ROOT))
 
-from taey_apply.application_confirmation import EmployerConfirmation  # noqa: E402
+from taey_apply.application_confirmation import (  # noqa: E402
+    ApplicationConfirmationError,
+    EmployerConfirmation,
+    validate_employer_confirmation,
+)
 from taey_apply.application_contract import (  # noqa: E402
     ApplicationContractError,
     EVIDENCE_STATES,
@@ -151,10 +156,10 @@ class SuccessfulExecutor:
                 route_id="hosted_confirmation",
                 route_sha256=digest("exact-employer-confirmation-route"),
                 anchor_sha256=digest("exact-employer-confirmation-anchor"),
-                observation_revisions=(
-                    digest("confirmation-observation-1"),
-                    digest("confirmation-observation-2"),
-                ),
+                stable_surface_revision=digest("stable-confirmation-surface"),
+                stable_sample_count=2,
+                observation_samples_sha256=digest("confirmation-samples"),
+                receipt_sha256=receipt_sha256,
             ),
         )
 
@@ -411,6 +416,43 @@ def action_budget_case(root: Path) -> None:
         raise RuntimeError("bounded action authority did not stop exactly")
 
 
+def confirmation_contract_cases() -> None:
+    receipt_sha256 = digest("terminal-executor-receipt")
+    confirmation = EmployerConfirmation(
+        provider="greenhouse",
+        application_identity_sha256=digest("confirmation-application"),
+        route_id="hosted_confirmation",
+        route_sha256=digest("confirmation-route"),
+        anchor_sha256=digest("confirmation-anchor"),
+        stable_surface_revision=digest("confirmation-surface"),
+        stable_sample_count=2,
+        observation_samples_sha256=digest("confirmation-samples"),
+        receipt_sha256=receipt_sha256,
+    )
+    validate_employer_confirmation(
+        confirmation,
+        expected_provider="greenhouse",
+        expected_application_identity_sha256=confirmation.application_identity_sha256,
+        expected_receipt_sha256=receipt_sha256,
+    )
+    for invalid in (
+        replace(confirmation, stable_sample_count=1),
+        replace(confirmation, receipt_sha256=digest("different-receipt")),
+    ):
+        try:
+            validate_employer_confirmation(
+                invalid,
+                expected_provider="greenhouse",
+                expected_application_identity_sha256=(
+                    confirmation.application_identity_sha256
+                ),
+                expected_receipt_sha256=receipt_sha256,
+            )
+        except ApplicationConfirmationError:
+            continue
+        raise RuntimeError("invalid stable confirmation evidence was accepted")
+
+
 def preparation_refusal_cases(root: Path) -> None:
     for seat, kwargs in (
         ("bad-gate", {"bad_stage": "deep_research"}),
@@ -485,13 +527,14 @@ def main() -> int:
         source_drift_case(root)
         executor_exception_case(root)
         action_budget_case(root)
+        confirmation_contract_cases()
         preparation_refusal_cases(root)
         cli_case(root)
     result = {
         "schema": "taey_apply_application_boundary_validation_v1",
         "verdict": "PASS",
         "production_mutations": 0,
-        "fixture_cases": 9,
+        "fixture_cases": 10,
         "validated": [
             "six autonomous prerequisite gates",
             "single-use frozen envelope",
@@ -502,6 +545,7 @@ def main() -> int:
             "source drift before executor mutation",
             "post-mutation executor exception containment",
             "bounded action authority",
+            "stable confirmation samples and exact receipt binding",
             "no routine human review field",
             "private-value omission",
         ],

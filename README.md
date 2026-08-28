@@ -53,7 +53,8 @@ injected one-action executor; at most one mutation per call
 + exact postcondition receipt chain
                  |
                  v
-two independent exact employer-confirmation observations
+two consecutive matched exact employer-confirmation observations
+of one stable surface, bound to the terminal executor receipt
 + terminal immutable result; no later mutation authority
 ```
 

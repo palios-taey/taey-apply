@@ -21,7 +21,10 @@ class EmployerConfirmation:
     route_id: str
     route_sha256: str
     anchor_sha256: str
-    observation_revisions: tuple[str, ...]
+    stable_surface_revision: str
+    stable_sample_count: int
+    observation_samples_sha256: str
+    receipt_sha256: str
 
 
 def _digest(value: object, context: str) -> str:
@@ -35,6 +38,7 @@ def validate_employer_confirmation(
     *,
     expected_provider: str,
     expected_application_identity_sha256: str,
+    expected_receipt_sha256: str,
 ) -> EmployerConfirmation:
     if not isinstance(confirmation, EmployerConfirmation):
         raise ApplicationConfirmationError("confirmation evidence type is invalid")
@@ -50,16 +54,20 @@ def validate_employer_confirmation(
         raise ApplicationConfirmationError("confirmation route identity is invalid")
     _digest(confirmation.route_sha256, "confirmation route")
     _digest(confirmation.anchor_sha256, "confirmation anchor")
-    revisions = confirmation.observation_revisions
+    _digest(confirmation.stable_surface_revision, "stable confirmation surface")
+    _digest(confirmation.observation_samples_sha256, "confirmation samples")
+    _digest(confirmation.receipt_sha256, "confirmation receipt")
     if (
-        not isinstance(revisions, tuple)
-        or len(revisions) < 2
-        or len(set(revisions)) != len(revisions)
-        or any(_DIGEST_RE.fullmatch(value) is None for value in revisions)
+        isinstance(confirmation.stable_sample_count, bool)
+        or not isinstance(confirmation.stable_sample_count, int)
+        or not 2 <= confirmation.stable_sample_count <= 64
     ):
         raise ApplicationConfirmationError(
-            "confirmation requires independent stable observations"
+            "confirmation requires consecutive matched stable samples"
         )
+    _digest(expected_receipt_sha256, "expected confirmation receipt")
+    if confirmation.receipt_sha256 != expected_receipt_sha256:
+        raise ApplicationConfirmationError("confirmation receipt binding differs")
     return confirmation
 
 
@@ -68,10 +76,13 @@ def employer_confirmation_sha256(confirmation: EmployerConfirmation) -> str:
         {
             "anchor_sha256": confirmation.anchor_sha256,
             "application_identity_sha256": confirmation.application_identity_sha256,
-            "observation_revisions": list(confirmation.observation_revisions),
+            "observation_samples_sha256": confirmation.observation_samples_sha256,
             "provider": confirmation.provider,
+            "receipt_sha256": confirmation.receipt_sha256,
             "route_id": confirmation.route_id,
             "route_sha256": confirmation.route_sha256,
+            "stable_sample_count": confirmation.stable_sample_count,
+            "stable_surface_revision": confirmation.stable_surface_revision,
         },
         allow_nan=False,
         ensure_ascii=False,

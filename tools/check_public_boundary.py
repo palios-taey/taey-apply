@@ -57,6 +57,7 @@ REQUIRED_FILES = {
     "docs/PRIVATE_BOUNDARY.md",
     "pyproject.toml",
     "schemas/application-envelope-v1.json",
+    "schemas/employer-confirmation-v1.json",
     "schemas/application-lifecycle-v1.json",
     "schemas/application-receipt-v1.json",
     "schemas/application-result-v1.json",

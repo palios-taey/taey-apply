@@ -68,9 +68,10 @@ The only terminal stop codes are:
 - `policy_or_authority_boundary`;
 - `side_effect_uncertainty`.
 
-Success requires an exact employer-confirmation route and anchor observed in at
-least two distinct revisions. The terminal result always sets
-`next_mutation_authorized` to `false`.
+Success requires an exact employer-confirmation route and anchor, one stable
+surface revision observed in at least two consecutive matched samples, the
+digest of those samples, and an exact binding to the terminal executor receipt.
+The terminal result always sets `next_mutation_authorized` to `false`.
 
 ## Mechanical gate
 
