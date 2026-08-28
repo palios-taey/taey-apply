@@ -578,6 +578,80 @@ def refusal_cases(root: Path) -> int:
         )
         return instance
 
+    inherited_option_revision = digest("inherited-option-revision")
+    inherited_combo_ref = ref(60)
+    inherited_option_ref = ref(61)
+    inherited_country = ready_compiler("inherited-country-options")
+    inherited_country.compile(
+        OneActionRequest(
+            envelope,
+            envelope_sha256,
+            2,
+            digest("receipt:1"),
+        ),
+        event_id_value="inherited-country-event",
+        correlation_id_value="inherited-country-select",
+        surface_capsule=options_capsule(
+            identity,
+            inherited_option_revision,
+            inherited_combo_ref,
+            inherited_option_ref,
+        ),
+        decision=decision(
+            "select_option",
+            inherited_option_revision,
+            None,
+            fact_key="country",
+        ),
+    )
+    inherited_country_action = frozen_action(
+        root,
+        "inherited-country-options",
+        "inherited-country-select",
+    )
+    if inherited_country_action["action"] != {
+        "kind": "select_option",
+        "ref": inherited_option_ref,
+        "revision": inherited_option_revision,
+        "combo_ref": inherited_combo_ref,
+        "expected_option_name": "United States +1",
+    }:
+        raise RuntimeError("inherited Country options did not compile exactly")
+
+    inherited_literal_revision = digest("inherited-literal-revision")
+    inherited_literal = ready_compiler("inherited-literal-options")
+    inherited_literal.compile(
+        OneActionRequest(
+            envelope,
+            envelope_sha256,
+            2,
+            digest("receipt:1"),
+        ),
+        event_id_value="inherited-literal-event",
+        correlation_id_value="inherited-literal-select",
+        surface_capsule=options_capsule(
+            identity,
+            inherited_literal_revision,
+            ref(62),
+            ref(63),
+            rendered_name="United States",
+            semantic_token=...,
+            origin_name="Location",
+        ),
+        decision=decision(
+            "select_option",
+            inherited_literal_revision,
+            None,
+            fact_key="country",
+        ),
+    )
+    if frozen_action(
+        root,
+        "inherited-literal-options",
+        "inherited-literal-select",
+    )["action"]["expected_option_name"] != "United States":
+        raise RuntimeError("inherited non-Country option stopped using literal match")
+
     failures = 0
     control_ref = ref(20)
     revision = digest("refusal-revision")
@@ -669,6 +743,59 @@ def refusal_cases(root: Path) -> int:
         form_with_token,
         decision("focus", revision, control_ref, fact_key="full_name"),
         "exact_postcondition_failure",
+    )
+    failures += 1
+
+    post_focus_ref = ref(64)
+    post_focus_revision = digest("post-focus-revision")
+    post_focus = ready_compiler("options-after-focus")
+    post_focus.compile(
+        OneActionRequest(
+            envelope,
+            envelope_sha256,
+            2,
+            digest("receipt:1"),
+        ),
+        event_id_value="options-after-focus-event",
+        correlation_id_value="options-after-focus-action",
+        surface_capsule=form_capsule(
+            identity,
+            post_focus_revision,
+            [
+                {
+                    "ref": post_focus_ref,
+                    "name": "Full name",
+                    "role": "entry",
+                    "operations": ["focus"],
+                    "is_empty": True,
+                }
+            ],
+        ),
+        decision=decision(
+            "focus",
+            post_focus_revision,
+            post_focus_ref,
+            fact_key="full_name",
+        ),
+    )
+    expect_failure(
+        post_focus,
+        envelope,
+        envelope_sha256,
+        3,
+        options_capsule(
+            identity,
+            digest("options-after-focus-options"),
+            ref(65),
+            ref(66),
+        ),
+        decision(
+            "select_option",
+            digest("options-after-focus-options"),
+            None,
+            fact_key="country",
+        ),
+        "unmapped_ui_or_question",
     )
     failures += 1
 
@@ -849,6 +976,7 @@ if __name__ == "__main__":
                 "duplicate_work_evidence_keys_accepted": 0,
                 "frozen_action_kinds": 11,
                 "human_review_states": 0,
+                "inherited_current_options_selection": True,
                 "network_calls": 0,
                 "non_country_literal_match_exact": True,
                 "prefix_or_fuzzy_fallbacks": 0,
