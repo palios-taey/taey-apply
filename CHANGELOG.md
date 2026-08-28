@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add the concrete stateful Greenhouse executor: native schema-constrained Taey
+  decisions over bounded surface/key context, one compiler publication, one
+  display-only Presence transaction, raw receipt conversion, and permanent
+  first-mismatch termination with no review, approval, queue, prose parsing,
+  direct Hands import, or retry. Fresh dropdown options are resolved privately
+  by one exact fact-to-current-option match, so Taey never guesses or receives
+  the applicant value.
 - Add a Greenhouse bounded-surface runtime compiler that validates one exact
   Taey decision, copies only immutable private fact/artifact bytes into one
   frozen Hands action, and publishes the exact Presence manifest without UI,

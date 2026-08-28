@@ -162,6 +162,15 @@ class CompiledGreenhouseAction:
     presence_manifest_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class GreenhouseDecisionContext:
+    application_identity_sha256: str
+    surface_capsule: Mapping[str, Any]
+    available_fact_keys: tuple[str, ...]
+    available_work_evidence_keys: tuple[str, ...]
+    previous_action_kind: str
+
+
 def _compiler_error(exc: BaseException) -> ApplicationActionCompilerError:
     if isinstance(exc, ApplicationActionCompilerError):
         return exc
@@ -209,16 +218,6 @@ def _token(value: object, context: str) -> str:
     return value
 
 
-def _optional_text(value: object, context: str) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value or len(value) > 4096:
-        raise ApplicationActionCompilerError(
-            "unmapped_ui_or_question", f"{context} is invalid"
-        )
-    return value
-
-
 def _validated_decision(value: object) -> dict[str, Any]:
     decision = _exact_mapping(value, _DECISION_KEYS, "action decision")
     if decision["schema"] != DECISION_SCHEMA or decision["action"] not in _DECISION_ACTIONS:
@@ -253,7 +252,13 @@ def _validated_decision(value: object) -> dict[str, Any]:
         raise ApplicationActionCompilerError(
             "unmapped_ui_or_question", "nonterminal decision carries a stop code"
         )
-    if not isinstance(ref, str) or _REF_RE.fullmatch(ref) is None:
+    if action == "select_option":
+        if ref is not None:
+            raise ApplicationActionCompilerError(
+                "unmapped_ui_or_question",
+                "private option resolution does not accept a model-selected ref",
+            )
+    elif not isinstance(ref, str) or _REF_RE.fullmatch(ref) is None:
         raise ApplicationActionCompilerError(
             "unmapped_ui_or_question", "decision ref is not current and exact"
         )
@@ -273,10 +278,10 @@ def _validated_decision(value: object) -> dict[str, Any]:
             "unmapped_ui_or_question", "decision fact key exceeds action authority"
         )
     if action == "select_option":
-        option_name = _optional_text(option_name, "expected option name")
-        if option_name is None:
+        if option_name is not None:
             raise ApplicationActionCompilerError(
-                "missing_truthful_applicant_data", "option answer is absent"
+                "unmapped_ui_or_question",
+                "private option resolution does not accept a model-selected name",
             )
     elif option_name is not None:
         raise ApplicationActionCompilerError(
@@ -733,6 +738,47 @@ class GreenhouseActionCompiler:
         self._transaction_id: str | None = None
         self._compiled_count = 0
 
+    def decision_context(
+        self,
+        request: OneActionRequest,
+        *,
+        surface_capsule: object,
+    ) -> GreenhouseDecisionContext:
+        if not isinstance(request, OneActionRequest):
+            raise ApplicationActionCompilerError(
+                "policy_or_authority_boundary", "one-action request is invalid"
+            )
+        if (
+            request.sequence_number != self._compiled_count + 1
+            or request.sequence_number < 2
+            or request.previous_receipt_sha256 is None
+            or self._last_action_kind is None
+        ):
+            raise ApplicationActionCompilerError(
+                "policy_or_authority_boundary", "decision sequence is not exact"
+            )
+        validate_application_envelope_sources(self._private_root, request.envelope)
+        context = _validated_context(self._private_root, request)
+        capsule = _validated_surface_capsule(surface_capsule, request)
+        facts = context["applicant_facts"]
+        evidence = context["work_evidence"]
+        assert isinstance(facts, Mapping)
+        assert isinstance(evidence, Mapping)
+        fact_keys = tuple(sorted(_token(key, "fact key") for key in facts))
+        evidence_keys = tuple(
+            sorted(_token(key, "work evidence key") for key in evidence)
+        )
+        for key in fact_keys:
+            _fact(context, key)
+        _work_evidence(context, list(evidence_keys))
+        return GreenhouseDecisionContext(
+            application_identity_sha256=request.envelope.application_identity_sha256,
+            surface_capsule=capsule,
+            available_fact_keys=fact_keys,
+            available_work_evidence_keys=evidence_keys,
+            previous_action_kind=self._last_action_kind,
+        )
+
     def compile(
         self,
         request: OneActionRequest,
@@ -926,24 +972,30 @@ class GreenhouseActionCompiler:
     ) -> dict[str, Any]:
         kind = str(decision["action"])
         revision = str(decision["revision"])
-        ref = str(decision["ref"])
         surface = capsule["surface"]
         if surface == "options":
             if kind != "select_option" or self._last_action_kind != "open_combo":
                 raise ApplicationActionCompilerError(
                     "unmapped_ui_or_question", "fresh options require one exact selection"
                 )
-            control = _control(capsule, ref)
             fact = _fact(context, str(decision["fact_key"]))
             value = fact["value"]
-            if not isinstance(value, str) or value != decision["expected_option_name"]:
+            if not isinstance(value, str) or not value:
                 raise ApplicationActionCompilerError(
-                    "missing_truthful_applicant_data", "fresh option lacks an exact truthful value"
+                    "missing_truthful_applicant_data",
+                    "fresh option lacks an exact truthful value",
                 )
-            if control["name"] != value:
+            matches = [
+                control
+                for control in capsule["controls"]
+                if control["name"] == value
+            ]
+            if len(matches) != 1:
                 raise ApplicationActionCompilerError(
-                    "unmapped_ui_or_question", "selected option does not match the fresh surface"
+                    "unmapped_ui_or_question",
+                    "fresh options do not contain one exact truthful match",
                 )
+            ref = str(matches[0]["ref"])
             return {
                 "kind": "select_option",
                 "ref": ref,
@@ -951,6 +1003,7 @@ class GreenhouseActionCompiler:
                 "combo_ref": capsule["origin"]["combo_ref"],
                 "expected_option_name": value,
             }
+        ref = str(decision["ref"])
         if surface == "native_dialog":
             expected = _NATIVE_SEQUENCE.get(self._last_action_kind or "")
             if expected is None or kind != expected[0] or self._active_artifact_slot is None:
@@ -1068,5 +1121,6 @@ __all__ = [
     "CompiledGreenhouseAction",
     "DECISION_SCHEMA",
     "GreenhouseActionCompiler",
+    "GreenhouseDecisionContext",
     "REQUIRED_HANDS_COMMIT",
 ]
