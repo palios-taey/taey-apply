@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a Greenhouse bounded-surface runtime compiler that validates one exact
+  Taey decision, copies only immutable private fact/artifact bytes into one
+  frozen Hands action, and publishes the exact Presence manifest without UI,
+  network, prose parsing, retry, or human review.
 - Add a provider-neutral parent-only materializer that compiles trusted frozen
   discovery, qualification, research, materials, applicant-fact, work-evidence,
   and policy sources into six immutable gates, one opaque private context, and

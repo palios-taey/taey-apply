@@ -546,7 +546,7 @@ def main() -> int:
             "post-mutation executor exception containment",
             "bounded action authority",
             "stable confirmation samples and exact receipt binding",
-            "no routine human review field",
+            "no human-review state or queue",
             "private-value omission",
         ],
     }

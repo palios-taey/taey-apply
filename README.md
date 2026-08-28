@@ -2,7 +2,7 @@
 
 `taey-apply` is the public application-domain state-transition boundary used by Taey. Its intake connector accepts one frozen, privately stored LinkedIn search-card capture paired with the exact selected-job capture that followed it, validates their immutable receipts, derives a stable LinkedIn job identity, and inserts one unclassified row into an existing private jobs database. Its separate classification connector applies one private-parent decision capsule to that exact qualified row. Its provider-neutral application layer verifies frozen discovery, qualification, deep-research, materials, truthful-data, and submission-authority evidence before coordinating an injected one-action executor to an exact employer confirmation.
 
-It does not search LinkedIn, implement ATS locators, traverse an accessibility tree, contain UI primitives, implement personal policy, score a person-job fit, commit applicant facts to Git, expose them on stdout, or own a private jobs database. The optional parent-only classification preparer can invoke exact private classifier bytes pinned by a private manifest; no policy rule or personal value is implemented or stored in the public repository. Application UI behavior remains owned by Presence and Hands behind a separately reviewed one-action adapter.
+It does not search LinkedIn, implement ATS locators, traverse an accessibility tree, contain UI primitives, implement personal policy, score a person-job fit, commit applicant facts to Git, expose them on stdout, or own a private jobs database. The optional parent-only classification preparer can invoke exact private classifier bytes pinned by a private manifest; no policy rule or personal value is implemented or stored in the public repository. Application UI behavior remains owned by Presence and Hands. The public Greenhouse runtime compiler validates one exact Taey decision against one bounded current surface and freezes one private Presence action without exposing applicant values or artifact paths.
 
 ## Current capability
 
@@ -59,9 +59,11 @@ of one stable surface, bound to the terminal executor receipt
 ```
 
 The public runner contains no concrete transport endpoint or tool name. Its
-`OneActionExecutor` protocol is the only integration seam. Production binding
-is intentionally blocked until the separately reviewed public Presence
-contract is merged.
+`OneActionExecutor` protocol is the only integration seam. The reviewed
+Presence Greenhouse profile and raw one-action route are merged, and the
+compiler now writes their exact private action/manifest input. A reviewed
+executor binding between that route and the provider-neutral runner remains to
+be landed; model-authored final chat text is not a receipt transport.
 
 The private parent owns, reviews, and pins its policy artifacts. The parent-only preparer constructs the claim mechanically; the separate commit connector proves claim-to-row persistence. Neither proves the semantic correctness of the private policy decision.
 
@@ -106,7 +108,7 @@ Taey never supplies paths, card names, company names, titles, descriptions, job 
 
 The autonomous application preparer likewise accepts only a trusted private
 root, one exact lifecycle file and digest, and public seat/correlation IDs.
-The canonical mechanics and current adapter blocker are in the
+The canonical mechanics and reviewed raw Presence transport boundary are in the
 [autonomous application runbook](docs/AUTONOMOUS_APPLICATION_RUNBOOK.md).
 
 The parent-only application materializer removes hand construction from that
@@ -116,6 +118,15 @@ facts, work evidence, and submission policy. It publishes six immutable gate
 receipts, one opaque context, and one lifecycle ready for the existing
 application preparer. It does not access UI or a database, choose a live option,
 submit, or create a human review or approval queue.
+
+`application_action_compiler.GreenhouseActionCompiler` consumes that context
+one action at a time. Taey cites only a current capsule ref/revision, allowed
+operation, and fact/evidence keys; the compiler copies the exact private value
+or artifact into one owner-only frozen action and publishes the immutable
+manifest consumed by Presence. Unknown questions and missing truth halt. There
+is no human-review state or queue, generic field map, retry, HTTP call, shell, or direct
+Hands import. Submit compiles only when the bounded Hands/Presence capsule
+proves `required_controls_complete == true`.
 
 ## Mechanical gates
 
@@ -128,6 +139,7 @@ python3 tools/validate_classification.py
 python3 tools/validate_classification_preparer.py
 python3 tools/validate_application_boundary.py
 python3 tools/validate_application_materializer.py
+python3 tools/validate_application_action_compiler.py
 ```
 
 These gates validate packaging and the deterministic data boundary with generated sanitized state. They do not replace exact-SHA review, deployment, or real Taey execution receipts. The production evidence qualified for the current baseline is recorded in the [canonical runbook](docs/LINKEDIN_APPLICATION_INTAKE_RUNBOOK.md#qualified-production-baseline).
@@ -136,6 +148,7 @@ These gates validate packaging and the deterministic data boundary with generate
 
 Version `0.1.1` includes deterministic transaction preparation, capture-to-unclassified intake, and the additive classification commit connector. Public commit `253b882571673ae30d3beadda6f174439755a241`, through Presence commit `c42bd319b2fb8ef6b9774b6ef171293baf73e897`, produced two independently checked production intake receipts against the active application feed. Public classification commit `f3560aae4777bb8396ad8ae3cc98b2bec0dc23b1`, through Presence commit `7c2b1e79f346921c83a8829697b0ffcb0dfb9bc9`, then completed the bounded one-shot Taey classification acceptance recorded in the [classification runbook](docs/LINKEDIN_APPLICATION_CLASSIFICATION_RUNBOOK.md#qualified-production-baseline).
 
-The provider-neutral autonomous layer has only mechanical fixture qualification;
-it has no concrete Presence adapter and therefore makes no production-application
-claim. Existing intake and classification production baselines are unchanged.
+The provider-neutral autonomous layer and Greenhouse runtime compiler have only
+mechanical fixture qualification. The runner-to-Presence adapter remains open,
+so there is no production-application claim. Existing intake and classification
+production baselines are unchanged.

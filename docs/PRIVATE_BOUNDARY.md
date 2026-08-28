@@ -5,6 +5,7 @@
 - connector source and CLI;
 - JSON schemas;
 - provider-neutral autonomous lifecycle, envelope, runner, and confirmation contracts;
+- Greenhouse bounded-surface decision and runtime compiler contracts;
 - compact result and receipt shapes;
 - install and mechanical validation gates;
 - generic documentation.
@@ -21,6 +22,8 @@
 - application prerequisite evidence receipts and opaque application context;
 - application materialization manifests, source artifacts, refusals, and
   lifecycles;
+- Greenhouse action decisions, bounded surface receipts, frozen actions, and
+  Presence manifests;
 - applicant facts, answers, resume/cover-letter paths, and employer-specific values;
 - raw job titles, companies, locations, descriptions, URLs, and account state;
 - personal profiles, preferences, filtering policy, classifier source, terminal classification values, scores, and applications.
@@ -50,6 +53,14 @@ copied only into the opaque `0400` application context.
 Its stdout and immutable refusal contain fixed states, counts, public IDs, and
 digests only. The public schemas define structure but contain no applicant
 value, path, employer value, or policy decision.
+
+The Greenhouse runtime compiler receives a bounded surface capsule and a Taey
+decision containing only current opaque refs, revisions, allowed operation,
+fact keys, work-evidence keys, and an exact fresh option name when applicable.
+It reopens the immutable context itself. Raw fact values and artifact paths are
+copied only into the owner-controlled `0400` Hands action; they are absent from
+the decision, compiler result, and Presence manifest. The compiler performs no
+network request, UI action, shell command, or direct Hands call.
 
 ## Taey-facing contract
 

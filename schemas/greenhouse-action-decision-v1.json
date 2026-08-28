@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/greenhouse-action-decision-v1.json",
+  "title": "Taey Greenhouse one-action decision",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_greenhouse_action_decision_v1"},
+    "action": {
+      "enum": [
+        "focus",
+        "fill",
+        "scroll_combo",
+        "open_combo",
+        "select_option",
+        "activate_choice",
+        "open_upload",
+        "chooser_location",
+        "chooser_select_all",
+        "chooser_type_path",
+        "chooser_confirm",
+        "submit",
+        "halt"
+      ]
+    },
+    "ref": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^(?:r_[0-9a-f]{32}|nd1_[0-9a-f]{64})$"
+        },
+        {"type": "null"}
+      ]
+    },
+    "revision": {
+      "oneOf": [
+        {"$ref": "#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "fact_key": {
+      "oneOf": [
+        {"$ref": "#/$defs/token"},
+        {"type": "null"}
+      ]
+    },
+    "work_evidence_keys": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/token"}
+    },
+    "expected_option_name": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 4096},
+        {"type": "null"}
+      ]
+    },
+    "stop_code": {
+      "oneOf": [
+        {
+          "enum": [
+            "exact_postcondition_failure",
+            "unmapped_ui_or_question",
+            "missing_truthful_applicant_data",
+            "policy_or_authority_boundary",
+            "side_effect_uncertainty"
+          ]
+        },
+        {"type": "null"}
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "action",
+    "ref",
+    "revision",
+    "fact_key",
+    "work_evidence_keys",
+    "expected_option_name",
+    "stop_code"
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "token": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,127}$"}
+  }
+}
