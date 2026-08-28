@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palios-taey.org/schemas/application-executor-terminal-evidence-v1.json",
+  "title": "Bounded terminal one-action executor evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "taey_apply_application_executor_terminal_evidence_v1"},
+    "application_identity_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "envelope_sha256": {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+    "sequence_number": {"type": "integer", "minimum": 1, "maximum": 256},
+    "previous_receipt_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "action_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "state": {"enum": ["terminal_halt", "side_effect_uncertain"]},
+    "failure_code": {
+      "enum": [
+        "exact_postcondition_failure",
+        "unmapped_ui_or_question",
+        "missing_truthful_applicant_data",
+        "policy_or_authority_boundary",
+        "side_effect_uncertainty"
+      ]
+    },
+    "stage": {"enum": ["request_lineage", "decision", "compile", "presence"]},
+    "reason_code": {
+      "enum": [
+        "request_lineage_mismatch",
+        "decision_source_refused",
+        "compiler_refused",
+        "taey_explicit_halt",
+        "presence_observation_refused"
+      ]
+    },
+    "accepted_decision_ref": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^application-executor-decisions/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"
+        },
+        {"type": "null"}
+      ]
+    },
+    "accepted_decision_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "decision_response_payload_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "capsule_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "presence_response_payload_sha256": {
+      "anyOf": [
+        {"$ref": "application-lifecycle-v1.json#/$defs/digest"},
+        {"type": "null"}
+      ]
+    },
+    "mutation_count": {"const": 0},
+    "next_mutation_authorized": {"const": false}
+  },
+  "required": [
+    "schema",
+    "application_identity_sha256",
+    "envelope_sha256",
+    "sequence_number",
+    "previous_receipt_sha256",
+    "action_id",
+    "state",
+    "failure_code",
+    "stage",
+    "reason_code",
+    "accepted_decision_ref",
+    "accepted_decision_sha256",
+    "decision_response_payload_sha256",
+    "capsule_sha256",
+    "presence_response_payload_sha256",
+    "mutation_count",
+    "next_mutation_authorized"
+  ]
+}

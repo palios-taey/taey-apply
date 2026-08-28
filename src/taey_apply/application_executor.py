@@ -14,14 +14,25 @@ from .application_action_compiler import (
     CompiledGreenhouseAction,
     GreenhouseActionCompiler,
     GreenhouseDecisionContext,
+    _ensure_seat_parent,
 )
 from .application_confirmation import EmployerConfirmation
-from .application_contract import OneActionOutcome, OneActionRequest
+from .application_contract import (
+    ApplicationContractError,
+    OneActionOutcome,
+    OneActionRequest,
+    TERMINAL_EVIDENCE_SCHEMA,
+    _accepted_decision,
+)
 from .contract import (
     IntakeContractError,
     canonical_json_bytes,
+    resolve_private_reference,
     sha256_hex,
+    validate_new_receipt_path,
+    validate_private_root,
     validate_public_id,
+    write_new_private_json,
 )
 
 
@@ -317,6 +328,11 @@ class TaeyJsonSchemaDecisionClient:
             )
         self._model = model_value
         self._transport = transport
+        self._last_response_payload_sha256: str | None = None
+
+    @property
+    def last_response_payload_sha256(self) -> str | None:
+        return self._last_response_payload_sha256
 
     def decide(
         self,
@@ -325,6 +341,7 @@ class TaeyJsonSchemaDecisionClient:
         event_id: str,
         correlation_id: str,
     ) -> Mapping[str, Any]:
+        self._last_response_payload_sha256 = None
         safe_input = {
             "schema": DECISION_INPUT_SCHEMA,
             "application_identity_sha256": context.application_identity_sha256,
@@ -378,6 +395,7 @@ class TaeyJsonSchemaDecisionClient:
             },
             payload=payload,
         )
+        self._last_response_payload_sha256 = response.payload_sha256
         choices = response.payload.get("choices")
         choice = choices[0] if isinstance(choices, list) and len(choices) == 1 else None
         message = choice.get("message") if isinstance(choice, Mapping) else None
@@ -435,6 +453,7 @@ class GreenhousePresenceOneActionExecutor:
         presence_transport: JsonTransport,
     ) -> None:
         try:
+            self._private_root = validate_private_root(private_root_value)
             self._seat_id = validate_public_id(seat_id_value, "seat ID")
             self._event_id = validate_public_id(event_id_value, "event ID")
             self._correlation_id = validate_public_id(
@@ -470,6 +489,62 @@ class GreenhousePresenceOneActionExecutor:
         self._expected_sequence = 1
         self._terminal = False
 
+    def _private_artifact(
+        self,
+        *,
+        bucket: str,
+        identity: str,
+        value: Mapping[str, Any],
+    ) -> tuple[str, str]:
+        reference = f"{bucket}/{self._seat_id}/{identity}.json"
+        try:
+            parent = _ensure_seat_parent(
+                self._private_root, bucket, self._seat_id
+            )
+            path = resolve_private_reference(
+                self._private_root,
+                reference,
+                bucket,
+                must_exist=False,
+            )
+            path = validate_new_receipt_path(path, self._private_root)
+            if path.parent != parent:
+                raise IntakeContractError(
+                    "unsafe_private_path", "private artifact parent differs"
+                )
+            raw_bytes = write_new_private_json(path, dict(value))
+        except (ApplicationActionCompilerError, IntakeContractError) as exc:
+            raise ApplicationExecutorError(
+                "side_effect_uncertainty", "private executor evidence write failed"
+            ) from exc
+        return reference, sha256_hex(raw_bytes)
+
+    def _decision_response_payload_sha256(self) -> str | None:
+        value = getattr(
+            self._decision_source, "last_response_payload_sha256", None
+        )
+        if value is None:
+            return None
+        return _digest(value, "Taey decision response")
+
+    def _persist_accepted_decision(
+        self,
+        decision: Mapping[str, Any] | None,
+        correlation_id: str,
+    ) -> tuple[str | None, str | None, Mapping[str, Any] | None]:
+        if decision is None:
+            return None, None, None
+        try:
+            exact_decision = _accepted_decision(decision)
+        except ApplicationContractError:
+            return None, None, None
+        reference, decision_sha256 = self._private_artifact(
+            bucket="application-executor-decisions",
+            identity=correlation_id,
+            value=exact_decision,
+        )
+        return reference, decision_sha256, exact_decision
+
     def _lineage(self, sequence_number: int) -> tuple[str, str]:
         return (
             f"{self._event_id}.s{sequence_number}",
@@ -482,7 +557,13 @@ class GreenhousePresenceOneActionExecutor:
         *,
         failure_code: str,
         action_id: str | None,
-        evidence: Mapping[str, Any],
+        stage: str,
+        reason_code: str,
+        accepted_decision_ref: str | None = None,
+        accepted_decision_sha256: str | None = None,
+        decision_response_payload_sha256: str | None = None,
+        capsule_sha256: str | None = None,
+        presence_response_payload_sha256: str | None = None,
     ) -> OneActionOutcome:
         self._terminal = True
         state = (
@@ -499,32 +580,48 @@ class GreenhousePresenceOneActionExecutor:
                     f"{failure_code}",
                 )
             )
-        receipt_sha256 = sha256_hex(
-            canonical_json_bytes(
-                {
-                    "schema": "taey_apply_application_executor_terminal_v1",
-                    "application_identity_sha256": (
-                        request.envelope.application_identity_sha256
-                    ),
-                    "envelope_sha256": request.envelope_sha256,
-                    "sequence_number": request.sequence_number,
-                    "previous_receipt_sha256": request.previous_receipt_sha256,
-                    "action_id": action_id,
-                    "failure_code": failure_code,
-                    "evidence": evidence,
-                }
-            )
+        evidence = {
+            "schema": TERMINAL_EVIDENCE_SCHEMA,
+            "application_identity_sha256": (
+                request.envelope.application_identity_sha256
+            ),
+            "envelope_sha256": request.envelope_sha256,
+            "sequence_number": request.sequence_number,
+            "previous_receipt_sha256": request.previous_receipt_sha256,
+            "action_id": action_id,
+            "state": state,
+            "failure_code": failure_code,
+            "stage": stage,
+            "reason_code": reason_code,
+            "accepted_decision_ref": accepted_decision_ref,
+            "accepted_decision_sha256": accepted_decision_sha256,
+            "decision_response_payload_sha256": (
+                decision_response_payload_sha256
+            ),
+            "capsule_sha256": capsule_sha256,
+            "presence_response_payload_sha256": (
+                presence_response_payload_sha256
+            ),
+            "mutation_count": 0,
+            "next_mutation_authorized": False,
+        }
+        evidence_ref, evidence_sha256 = self._private_artifact(
+            bucket="application-executor-outcomes",
+            identity=action_id,
+            value=evidence,
         )
         return OneActionOutcome(
             application_identity_sha256=(request.envelope.application_identity_sha256),
             action_id=action_id,
             previous_receipt_sha256=request.previous_receipt_sha256,
-            receipt_sha256=receipt_sha256,
+            receipt_sha256=evidence_sha256,
             state=state,
             mutation_count=0,
             postcondition_sha256=None,
             next_mutation_authorized=False,
             stop_code=failure_code,
+            terminal_evidence_ref=evidence_ref,
+            terminal_evidence_sha256=evidence_sha256,
         )
 
     def _response_headers_prove(
@@ -693,27 +790,32 @@ class GreenhousePresenceOneActionExecutor:
                 request,
                 failure_code="policy_or_authority_boundary",
                 action_id=None,
-                evidence={"stage": "request_lineage"},
+                stage="request_lineage",
+                reason_code="request_lineage_mismatch",
             )
         event_id, correlation_id = self._lineage(request.sequence_number)
+        decision: Mapping[str, Any] | None = None
+        decision_attempted = False
+        capsule: Mapping[str, Any] | None = None
+        capsule_sha256: str | None = None
         try:
-            decision: Mapping[str, Any] | None = None
-            capsule: Mapping[str, Any] | None = None
             if request.sequence_number > 1:
                 if self._capsule is None or self._previous_action_kind is None:
                     raise ApplicationExecutorError(
                         "side_effect_uncertainty", "current decision evidence is absent"
                     )
+                capsule = self._capsule
+                capsule_sha256 = sha256_hex(canonical_json_bytes(capsule))
                 decision_context = self._compiler.decision_context(
                     request,
-                    surface_capsule=self._capsule,
+                    surface_capsule=capsule,
                 )
+                decision_attempted = True
                 decision = self._decision_source.decide(
                     decision_context,
                     event_id=event_id,
                     correlation_id=correlation_id,
                 )
-                capsule = self._capsule
             compiled = self._compiler.compile(
                 request,
                 event_id_value=event_id,
@@ -722,18 +824,44 @@ class GreenhousePresenceOneActionExecutor:
                 decision=decision,
             )
         except ApplicationActionCompilerError as exc:
+            decision_ref, decision_sha256, exact_decision = (
+                self._persist_accepted_decision(decision, correlation_id)
+            )
+            explicit_halt = (
+                exact_decision is not None
+                and exact_decision["action"] == "halt"
+                and exact_decision["stop_code"] == exc.failure_code
+            )
             return self._terminal_outcome(
                 request,
                 failure_code=exc.failure_code,
                 action_id=None,
-                evidence={"stage": "compile"},
+                stage="compile",
+                reason_code=(
+                    "taey_explicit_halt" if explicit_halt else "compiler_refused"
+                ),
+                accepted_decision_ref=decision_ref,
+                accepted_decision_sha256=decision_sha256,
+                decision_response_payload_sha256=(
+                    self._decision_response_payload_sha256()
+                    if decision_attempted
+                    else None
+                ),
+                capsule_sha256=capsule_sha256,
             )
         except ApplicationExecutorError as exc:
             return self._terminal_outcome(
                 request,
                 failure_code=exc.failure_code,
                 action_id=None,
-                evidence={"stage": "decision"},
+                stage="decision",
+                reason_code="decision_source_refused",
+                decision_response_payload_sha256=(
+                    self._decision_response_payload_sha256()
+                    if decision_attempted
+                    else None
+                ),
+                capsule_sha256=capsule_sha256,
             )
         try:
             response = self._presence_transport.post(
@@ -754,10 +882,9 @@ class GreenhousePresenceOneActionExecutor:
                         request,
                         failure_code="exact_postcondition_failure",
                         action_id=compiled.action_id,
-                        evidence={
-                            "stage": "presence_observe",
-                            "payload_sha256": response.payload_sha256,
-                        },
+                        stage="presence",
+                        reason_code="presence_observation_refused",
+                        presence_response_payload_sha256=response.payload_sha256,
                     )
                 raise ApplicationExecutorError(
                     "side_effect_uncertainty",

@@ -43,8 +43,13 @@ fixed gate states, a provider identity, a bounded one-action call budget, and
 derived outcome references. The opaque application-context file may contain
 private applicant values, but the public runner never interprets or emits them.
 The eventual Presence adapter resolves those values outside model-visible output
-under its own reviewed contract. Terminal receipts contain only counts, digests,
-fixed states, and one of the five declared stop codes.
+under its own reviewed contract. Terminal executor evidence contains only
+lineage, finite stage/reason enums, digests, private relative refs, fixed state,
+and one of the five declared stop codes. A separately frozen accepted decision
+contains only the bounded decision schema's operation, opaque ref/revision,
+fact/evidence key names, and stop code. Neither artifact contains exception text
+or applicant values. The final private result binds the exact terminal evidence
+ref and digest; compact stdout does not expose either private ref.
 
 The application materializer reads one canonical `0400` manifest and only its
 bound `0400` artifacts beneath the explicit private root. Raw applicant facts,

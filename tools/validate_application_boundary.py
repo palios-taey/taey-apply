@@ -165,22 +165,65 @@ class SuccessfulExecutor:
 
 
 class TerminalExecutor:
-    def __init__(self, stop_code: str) -> None:
+    def __init__(
+        self,
+        root: Path,
+        seat: str,
+        stop_code: str,
+        *,
+        evidence_state: str = "valid",
+    ) -> None:
+        self.root = root
+        self.seat = seat
         self.stop_code = stop_code
+        self.evidence_state = evidence_state
         self.calls = 0
 
     def __call__(self, request: OneActionRequest) -> OneActionOutcome:
         self.calls += 1
+        action_id = f"halt-{request.sequence_number}"
+        evidence_ref = (
+            f"application-executor-outcomes/{self.seat}/{action_id}.json"
+        )
+        evidence = {
+            "schema": "taey_apply_application_executor_terminal_evidence_v1",
+            "application_identity_sha256": (
+                request.envelope.application_identity_sha256
+            ),
+            "envelope_sha256": request.envelope_sha256,
+            "sequence_number": request.sequence_number,
+            "previous_receipt_sha256": request.previous_receipt_sha256,
+            "action_id": action_id,
+            "state": "terminal_halt",
+            "failure_code": self.stop_code,
+            "stage": "compile",
+            "reason_code": "compiler_refused",
+            "accepted_decision_ref": None,
+            "accepted_decision_sha256": None,
+            "decision_response_payload_sha256": None,
+            "capsule_sha256": None,
+            "presence_response_payload_sha256": None,
+            "mutation_count": 0,
+            "next_mutation_authorized": False,
+        }
+        raw_bytes = canonical_json_bytes(evidence)
+        receipt_sha256 = digest(raw_bytes)
+        if self.evidence_state != "missing":
+            write_frozen(self.root / evidence_ref, evidence)
+        if self.evidence_state == "tampered":
+            receipt_sha256 = digest("different-terminal-evidence")
         return OneActionOutcome(
             application_identity_sha256=request.envelope.application_identity_sha256,
-            action_id=f"halt-{request.sequence_number}",
+            action_id=action_id,
             previous_receipt_sha256=request.previous_receipt_sha256,
-            receipt_sha256=digest(f"halt-receipt:{request.sequence_number}"),
+            receipt_sha256=receipt_sha256,
             state="terminal_halt",
             mutation_count=0,
             postcondition_sha256=None,
             next_mutation_authorized=False,
             stop_code=self.stop_code,
+            terminal_evidence_ref=evidence_ref,
+            terminal_evidence_sha256=receipt_sha256,
         )
 
 
@@ -273,7 +316,9 @@ def success_case(root: Path) -> None:
         or len(executor.requests) != 3
     ):
         raise RuntimeError("successful autonomous fixture did not prove its boundary")
-    replay_executor = TerminalExecutor("unmapped_ui_or_question")
+    replay_executor = TerminalExecutor(
+        root, "success-replay", "unmapped_ui_or_question"
+    )
     try:
         run_application(
             private_root_value=root,
@@ -294,22 +339,65 @@ def success_case(root: Path) -> None:
 
 def terminal_case(root: Path) -> None:
     _, envelope_path, envelope_sha256 = prepare_case(root, "terminal")
-    executor = TerminalExecutor("unmapped_ui_or_question")
+    executor = TerminalExecutor(root, "terminal", "unmapped_ui_or_question")
     result = run_application(
         private_root_value=root,
         envelope_path_value=envelope_path,
         expected_envelope_sha256=envelope_sha256,
         executor=executor,
     )
+    result_path = root / "application-results" / "terminal" / "terminal.json"
+    receipt = json.loads(result_path.read_bytes())
+    evidence_path = root / receipt["final_executor_evidence_ref"]
+    evidence_bytes = evidence_path.read_bytes()
     if (
         result["ok"] is not False
         or result["state"] != "terminal_halt"
         or result["failure_code"] != "unmapped_ui_or_question"
         or result["one_action_calls"] != 1
         or result["ui_mutations"] != 0
+        or receipt["final_executor_receipt_sha256"]
+        != receipt["final_executor_evidence_sha256"]
+        or digest(evidence_bytes) != receipt["final_executor_evidence_sha256"]
+        or stat.S_IMODE(evidence_path.stat().st_mode) != 0o400
+        or PRIVATE_SENTINEL.encode() in evidence_bytes
         or executor.calls != 1
     ):
         raise RuntimeError("mapped terminal fixture did not stop exactly")
+
+
+def terminal_evidence_integrity_cases(root: Path) -> None:
+    for seat, evidence_state in (
+        ("missing-terminal-evidence", "missing"),
+        ("tampered-terminal-evidence", "tampered"),
+    ):
+        _, envelope_path, envelope_sha256 = prepare_case(root, seat)
+        executor = TerminalExecutor(
+            root,
+            seat,
+            "unmapped_ui_or_question",
+            evidence_state=evidence_state,
+        )
+        result = run_application(
+            private_root_value=root,
+            envelope_path_value=envelope_path,
+            expected_envelope_sha256=envelope_sha256,
+            executor=executor,
+        )
+        receipt_path = root / "application-results" / seat / f"{seat}.json"
+        receipt = json.loads(receipt_path.read_bytes())
+        if (
+            result["state"] != "side_effect_uncertain"
+            or result["failure_code"] != "side_effect_uncertainty"
+            or result["one_action_calls"] != 1
+            or result["ui_mutations"] is not None
+            or receipt["final_executor_evidence_ref"] is not None
+            or receipt["final_executor_evidence_sha256"] is not None
+            or executor.calls != 1
+        ):
+            raise RuntimeError(
+                f"{evidence_state} terminal evidence was accepted"
+            )
 
 
 def invalid_executor_case(root: Path) -> None:
@@ -334,7 +422,7 @@ def source_drift_case(root: Path) -> None:
     _, envelope_path, envelope_sha256 = prepare_case(root, "source-drift")
     source = root / "application-evidence" / "source-drift" / "deep_research.json"
     source.chmod(0o600)
-    executor = TerminalExecutor("unmapped_ui_or_question")
+    executor = TerminalExecutor(root, "source-drift", "unmapped_ui_or_question")
     result = run_application(
         private_root_value=root,
         envelope_path_value=envelope_path,
@@ -523,6 +611,7 @@ def main() -> int:
         root.chmod(0o700)
         success_case(root)
         terminal_case(root)
+        terminal_evidence_integrity_cases(root)
         invalid_executor_case(root)
         source_drift_case(root)
         executor_exception_case(root)
@@ -534,13 +623,15 @@ def main() -> int:
         "schema": "taey_apply_application_boundary_validation_v1",
         "verdict": "PASS",
         "production_mutations": 0,
-        "fixture_cases": 10,
+        "fixture_cases": 12,
         "validated": [
             "six autonomous prerequisite gates",
             "single-use frozen envelope",
             "one-action receipt chaining",
             "exact employer confirmation",
             "mapped first-error terminalization",
+            "immutable terminal evidence digest and private reference binding",
+            "missing and tampered terminal evidence containment",
             "invalid executor side-effect containment",
             "source drift before executor mutation",
             "post-mutation executor exception containment",

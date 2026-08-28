@@ -20,6 +20,7 @@ from .contract import (
 LIFECYCLE_SCHEMA = "taey_apply_application_lifecycle_v1"
 ENVELOPE_SCHEMA = "taey_apply_application_envelope_v1"
 RECEIPT_SCHEMA = "taey_apply_application_receipt_v1"
+TERMINAL_EVIDENCE_SCHEMA = "taey_apply_application_executor_terminal_evidence_v1"
 OPERATION = "execute_autonomous_application"
 
 EVIDENCE_STATES = {
@@ -46,6 +47,18 @@ OUTCOME_STATES = frozenset(
         "employer_confirmation_proven",
         "terminal_halt",
         "side_effect_uncertain",
+    }
+)
+TERMINAL_EVIDENCE_STAGES = frozenset(
+    {"request_lineage", "decision", "compile", "presence"}
+)
+TERMINAL_REASON_CODES = frozenset(
+    {
+        "request_lineage_mismatch",
+        "decision_source_refused",
+        "compiler_refused",
+        "taey_explicit_halt",
+        "presence_observation_refused",
     }
 )
 
@@ -75,9 +88,72 @@ _BINDING_KEYS = frozenset(
 _GATE_RECEIPT_KEYS = frozenset(
     {"schema", "ok", "state", "application_identity_sha256", "evidence_sha256"}
 )
+_TERMINAL_EVIDENCE_KEYS = frozenset(
+    {
+        "schema",
+        "application_identity_sha256",
+        "envelope_sha256",
+        "sequence_number",
+        "previous_receipt_sha256",
+        "action_id",
+        "state",
+        "failure_code",
+        "stage",
+        "reason_code",
+        "accepted_decision_ref",
+        "accepted_decision_sha256",
+        "decision_response_payload_sha256",
+        "capsule_sha256",
+        "presence_response_payload_sha256",
+        "mutation_count",
+        "next_mutation_authorized",
+    }
+)
+_ACCEPTED_DECISION_KEYS = frozenset(
+    {
+        "schema",
+        "action",
+        "ref",
+        "revision",
+        "fact_key",
+        "work_evidence_keys",
+        "expected_option_name",
+        "stop_code",
+    }
+)
+_DECISION_ACTIONS = frozenset(
+    {
+        "focus",
+        "fill",
+        "scroll_combo",
+        "open_combo",
+        "select_option",
+        "activate_choice",
+        "open_upload",
+        "chooser_location",
+        "chooser_select_all",
+        "chooser_type_path",
+        "chooser_confirm",
+        "submit",
+        "halt",
+    }
+)
+_FACT_ACTIONS = frozenset(
+    {"focus", "fill", "scroll_combo", "open_combo", "select_option", "activate_choice"}
+)
 _PROVIDER_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 _SCHEMA_RE = re.compile(r"[a-z][a-z0-9_]{2,127}")
 _PUBLIC_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_REF_RE = re.compile(r"(?:r_[0-9a-f]{32}|nd1_[0-9a-f]{64})")
+_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{0,127}")
+_TERMINAL_EVIDENCE_REF_RE = re.compile(
+    r"application-executor-outcomes/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/"
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json"
+)
+_ACCEPTED_DECISION_REF_RE = re.compile(
+    r"application-executor-decisions/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/"
+    r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json"
+)
 
 
 class ApplicationContractError(RuntimeError):
@@ -129,6 +205,8 @@ class OneActionOutcome:
     next_mutation_authorized: bool
     stop_code: str | None = None
     confirmation: EmployerConfirmation | None = None
+    terminal_evidence_ref: str | None = None
+    terminal_evidence_sha256: str | None = None
 
 
 class OneActionExecutor(Protocol):
@@ -463,6 +541,198 @@ def validate_application_envelope_sources(
         )
 
 
+def _optional_digest(value: object, context: str) -> str | None:
+    if value is None:
+        return None
+    return _digest(value, context)
+
+
+def _accepted_decision(value: object) -> Mapping[str, Any]:
+    decision = _mapping(value, "accepted decision")
+    _exact_keys(decision, _ACCEPTED_DECISION_KEYS, "accepted decision")
+    action = decision["action"]
+    if (
+        decision["schema"] != "taey_apply_greenhouse_action_decision_v1"
+        or not isinstance(action, str)
+        or action not in _DECISION_ACTIONS
+        or decision["expected_option_name"] is not None
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision is not bounded"
+        )
+    raw_work_keys = decision["work_evidence_keys"]
+    if (
+        not isinstance(raw_work_keys, list)
+        or len(raw_work_keys) > 256
+        or any(
+            not isinstance(item, str) or _TOKEN_RE.fullmatch(item) is None
+            for item in raw_work_keys
+        )
+        or len(raw_work_keys) != len(set(raw_work_keys))
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision keys are not bounded"
+        )
+    if action == "halt":
+        if (
+            decision["ref"] is not None
+            or decision["revision"] is not None
+            or decision["fact_key"] is not None
+            or not isinstance(decision["stop_code"], str)
+            or decision["stop_code"] not in STOP_CODES
+        ):
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "accepted terminal decision is malformed"
+            )
+        return decision
+    ref = decision["ref"]
+    if (
+        decision["stop_code"] is not None
+        or (
+            action == "select_option"
+            and ref is not None
+        )
+        or (
+            action != "select_option"
+            and (not isinstance(ref, str) or _REF_RE.fullmatch(ref) is None)
+        )
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision authority is malformed"
+        )
+    _digest(decision["revision"], "accepted decision revision")
+    fact_key = decision["fact_key"]
+    if (
+        action in _FACT_ACTIONS
+        and (not isinstance(fact_key, str) or _TOKEN_RE.fullmatch(fact_key) is None)
+    ) or (action not in _FACT_ACTIONS and fact_key is not None):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision fact key is malformed"
+        )
+    return decision
+
+
+def validate_terminal_outcome_evidence(
+    private_root: Path,
+    outcome: OneActionOutcome,
+    request: OneActionRequest,
+) -> Mapping[str, Any]:
+    if (
+        outcome.state not in {"terminal_halt", "side_effect_uncertain"}
+        or outcome.terminal_evidence_ref is None
+        or outcome.terminal_evidence_sha256 is None
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "terminal evidence binding is absent"
+        )
+    evidence, _ = _bound_private_json(
+        private_root,
+        outcome.terminal_evidence_ref,
+        outcome.terminal_evidence_sha256,
+        "terminal executor evidence",
+    )
+    _exact_keys(evidence, _TERMINAL_EVIDENCE_KEYS, "terminal executor evidence")
+    if (
+        evidence["schema"] != TERMINAL_EVIDENCE_SCHEMA
+        or evidence["application_identity_sha256"]
+        != request.envelope.application_identity_sha256
+        or evidence["envelope_sha256"] != request.envelope_sha256
+        or evidence["sequence_number"] != request.sequence_number
+        or evidence["previous_receipt_sha256"]
+        != request.previous_receipt_sha256
+        or evidence["action_id"] != outcome.action_id
+        or evidence["state"] != outcome.state
+        or evidence["failure_code"] != outcome.stop_code
+        or not isinstance(evidence["stage"], str)
+        or evidence["stage"] not in TERMINAL_EVIDENCE_STAGES
+        or not isinstance(evidence["reason_code"], str)
+        or evidence["reason_code"] not in TERMINAL_REASON_CODES
+        or isinstance(evidence["mutation_count"], bool)
+        or not isinstance(evidence["mutation_count"], int)
+        or evidence["mutation_count"] != outcome.mutation_count
+        or evidence["mutation_count"] != 0
+        or evidence["next_mutation_authorized"] is not False
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "terminal executor evidence differs"
+        )
+    stage = evidence["stage"]
+    reason_code = evidence["reason_code"]
+    expected_reasons = {
+        "request_lineage": {"request_lineage_mismatch"},
+        "decision": {"decision_source_refused"},
+        "compile": {"compiler_refused", "taey_explicit_halt"},
+        "presence": {"presence_observation_refused"},
+    }
+    if reason_code not in expected_reasons[stage]:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "terminal executor reason is out of stage"
+        )
+    decision_ref = evidence["accepted_decision_ref"]
+    decision_sha256 = evidence["accepted_decision_sha256"]
+    if (decision_ref is None) is not (decision_sha256 is None):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision binding is incomplete"
+        )
+    accepted_decision: Mapping[str, Any] | None = None
+    if decision_ref is not None:
+        if (
+            not isinstance(decision_ref, str)
+            or _ACCEPTED_DECISION_REF_RE.fullmatch(decision_ref) is None
+        ):
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "accepted decision reference is invalid"
+            )
+        decision_sha256 = _digest(decision_sha256, "accepted decision")
+        accepted_decision, _ = _bound_private_json(
+            private_root,
+            decision_ref,
+            decision_sha256,
+            "accepted decision",
+        )
+        accepted_decision = _accepted_decision(accepted_decision)
+    for key in (
+        "decision_response_payload_sha256",
+        "capsule_sha256",
+        "presence_response_payload_sha256",
+    ):
+        _optional_digest(evidence[key], key)
+    if stage == "request_lineage" and any(
+        evidence[key] is not None
+        for key in (
+            "accepted_decision_ref",
+            "accepted_decision_sha256",
+            "decision_response_payload_sha256",
+            "capsule_sha256",
+            "presence_response_payload_sha256",
+        )
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "lineage evidence exceeds its stage"
+        )
+    if stage != "presence" and evidence["presence_response_payload_sha256"] is not None:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "Presence evidence exceeds its stage"
+        )
+    if stage == "presence" and evidence["presence_response_payload_sha256"] is None:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "Presence response digest is absent"
+        )
+    if reason_code == "taey_explicit_halt" and (
+        accepted_decision is None
+        or accepted_decision["action"] != "halt"
+        or accepted_decision["stop_code"] != outcome.stop_code
+    ):
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "explicit Taey halt is not reconstructed"
+        )
+    if accepted_decision is not None and stage not in {"compile", "presence"}:
+        raise ApplicationContractError(
+            "side_effect_uncertainty", "accepted decision exceeds its stage"
+        )
+    return evidence
+
+
 def validate_one_action_outcome(
     outcome: object,
     request: OneActionRequest,
@@ -501,7 +771,12 @@ def validate_one_action_outcome(
         "employer_confirmation_proven",
     }
     if proven:
-        if outcome.stop_code is not None or outcome.postcondition_sha256 is None:
+        if (
+            outcome.stop_code is not None
+            or outcome.postcondition_sha256 is None
+            or outcome.terminal_evidence_ref is not None
+            or outcome.terminal_evidence_sha256 is not None
+        ):
             raise ApplicationContractError(
                 "side_effect_uncertainty", "proved outcome lacks exact postcondition"
             )
@@ -532,6 +807,9 @@ def validate_one_action_outcome(
             or outcome.stop_code not in STOP_CODES
             or outcome.postcondition_sha256 is not None
             or outcome.confirmation is not None
+            or not isinstance(outcome.terminal_evidence_ref, str)
+            or _TERMINAL_EVIDENCE_REF_RE.fullmatch(outcome.terminal_evidence_ref)
+            is None
         ):
             raise ApplicationContractError(
                 "side_effect_uncertainty", "terminal outcome is inconsistent"
@@ -550,6 +828,13 @@ def validate_one_action_outcome(
             raise ApplicationContractError(
                 "side_effect_uncertainty", "terminal halt code is inconsistent"
             )
+        evidence_sha256 = _digest(
+            outcome.terminal_evidence_sha256, "terminal executor evidence"
+        )
+        if outcome.receipt_sha256 != evidence_sha256:
+            raise ApplicationContractError(
+                "side_effect_uncertainty", "terminal receipt binding differs"
+            )
     return outcome
 
 
@@ -567,9 +852,13 @@ __all__ = [
     "OUTCOME_STATES",
     "RECEIPT_SCHEMA",
     "STOP_CODES",
+    "TERMINAL_EVIDENCE_SCHEMA",
+    "TERMINAL_EVIDENCE_STAGES",
+    "TERMINAL_REASON_CODES",
     "build_application_envelope",
     "load_application_envelope",
     "load_application_lifecycle",
     "validate_application_envelope_sources",
     "validate_one_action_outcome",
+    "validate_terminal_outcome_evidence",
 ]
